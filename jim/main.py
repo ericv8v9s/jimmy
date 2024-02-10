@@ -1,5 +1,5 @@
-from jim import reader, interpreter
-from sys import stdin, stdout
+from jim import reader, interpreter, utils
+from sys import stdin
 
 
 def main(argv):
@@ -14,14 +14,16 @@ def main(argv):
 def repl():
 	read_char = lambda: stdin.read(1)
 	while True:
-		print("IN: ", end="")
-		stdout.flush()
+		print("IN: ", end="", flush=True)
 		parsed = reader.parse(read_char)
+		result = interpreter.top_level_evaluate(parsed)
+
 		if parsed is None:
 			print()
 			break
-		print("OUT:", interpreter.evaluate(parsed))
-		stdout.flush()
+
+		if result is not None:
+			print("OUT:", utils.form_to_str(result), flush=True)
 
 
 def run_file(fname):
@@ -32,8 +34,9 @@ def run_file(fname):
 	with f:
 		while True:
 			form = reader.parse(lambda: f.read(1))
-			print(interpreter.evaluate(form))
 			if form is None:
+				break
+			if interpreter.top_level_evaluate(form) is None:
 				break
 
 

@@ -2,6 +2,8 @@ from collections import deque
 from contextlib import contextmanager
 
 import jim.builtins
+import jim.utils as utils
+import jim.execution as jexec
 from jim.errors import *
 
 
@@ -14,10 +16,13 @@ class Stackframe:
 	def lookup(self, symbol):
 		try:
 			return self.symbol_table[symbol]
-		except KeyError:
+		except KeyError as e:
 			if self.last_frame is not None:
 				return self.last_frame.lookup(symbol)
-			raise UndefinedVariableError(symbol, "Variable is undefined.")
+			raise UndefinedVariableError(symbol) from e
+
+	def __getitem__(self, key):
+		return self.symbol_table[key]
 
 
 top_frame = Stackframe(None, "base frame")
@@ -27,26 +32,28 @@ top_frame.symbol_table = {
 	"nil"   : jim.builtins.nil,
 	"true"  : True,
 	"false" : False,
-	"list"  : jim.builtins.List,
-	"assign": jim.builtins.Assignment,
-	"func"  : jim.builtins.Lambda,
-	"cond"  : jim.builtins.Cond,
-	"while" : jim.builtins.While,
+	#"list"  : jim.builtins.List(),
+	"assign": jim.builtins.Assignment(),
+	"func"  : jim.builtins.Lambda(),
+	#"cond"  : jim.builtins.Cond(),
+	#"while" : jim.builtins.While(),
 	# arithmetic
-	"+"     : jim.builtins.Addition,
-	"-"     : jim.builtins.Subtraction,
-	"*"     : jim.builtins.Multiplication,
-	"/"     : jim.builtins.Division,
-	"%"     : jim.builtins.(...),
+	"+"     : jim.builtins.Addition(),
+	"-"     : jim.builtins.Subtraction(),
+	"*"     : jim.builtins.Multiplication(),
+	"/"     : jim.builtins.Division(),
+	#"%"     : jim.builtins.(...),
 	# tests
-	"="     : jim.builtins.(...),
-	"<"     : jim.builtins.(...),
-	">"     : jim.builtins.(...),
-	"<="    : jim.builtins.(...),
-	">="    : jim.builtins.(...),
-	"and"   : jim.builtins.(...),
-	"or"    : jim.builtins.(...),
-	"not"   : jim.builtins.(...)
+	#"="     : jim.builtins.(...),
+	#"<"     : jim.builtins.(...),
+	#">"     : jim.builtins.(...),
+	#"<="    : jim.builtins.(...),
+	#">="    : jim.builtins.(...),
+	#"and"   : jim.builtins.(...),
+	#"or"    : jim.builtins.(...),
+	#"not"   : jim.builtins.(...),
+
+	"print" : jim.builtins.Print()
 }
 
 def iter_stack():
@@ -57,15 +64,33 @@ def iter_stack():
 
 
 @contextmanager
-def new_stackframe(call_form):
+def push_new_frame(call_form):
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
 	yield top_frame
 	top_frame = top_frame.last_frame
 
 
+@contextmanager
+def switch_stack(new_top_frame):
+	global top_frame
+	saved = top_frame
+	top_frame = new_top_frame
+	yield new_top_frame
+	top_frame = saved
+
+
+def top_level_evaluate(form):
+	try:
+		return evaluate(form)
+	except JimmyError as e:
+		import sys
+		print(format_error(e), file=sys.stderr)
+
 def evaluate(form):
 	"""Computes a value for the form parsed by reader."""
+
+	#print(f"DEBUG: evaluate( {utils.form_to_str(form)} )")
 
 	if isinstance(form, tuple):
 		return evaluate_atom(form)
@@ -77,11 +102,13 @@ def evaluate(form):
 		execution = evaluate(form[0])
 		argv = form[1:]
 
-		if isinstance(execution, Macro):
+		if isinstance(execution, jexec.Macro):
 			return evaluate(invoke(form, execution, argv))
-		else:
+		elif isinstance(execution, jexec.Function):
 			argv = [evaluate(arg) for arg in argv]
 			return invoke(form, execution, argv)
+		else:
+			raise JimmyError(form, "Invocation target is invalid.")
 	else:  # otherwise, consider it to be a raw object already evaluated
 		return form
 
@@ -96,15 +123,22 @@ def evaluate_atom(atom):
 
 
 def invoke(form, execution, argv):
-	with new_stackframe(form):
-		#top_frame.update(parse_argv(execution.parameters, argv))
-		pi = 0
-		can_accept = len(execution.parameter_spec) > 0
-		satisfied = all(map(lambda spec: isinstance(spec, list),
-				execution.parameter_spec))
+	#print(f"DEBUG: invoke({form}, {execution}, {argv})")
 
-		for arg in argv:
-			if not can_accept:
-				# TODO
+	params = dict()  # collects arguments to match up with parameters
+	argv_idx = 0
 
-		return execution.run(top_frame)
+	for p in execution.parameter_spec:
+		if isinstance(p, str):  # positional
+			if argv_idx < len(argv):
+				params[p] = argv[argv_idx]
+				argv_idx += 1
+			else:
+				raise ArgumentMismatchError(form)
+		elif isinstance(p, list):  # rest
+			params[p[0]] = argv[argv_idx:]
+			argv_idx += len(params[p[0]])
+
+	with push_new_frame(form) as f:
+		f.symbol_table.update(params)
+		return execution.evaluate(f)

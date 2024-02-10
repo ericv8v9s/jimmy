@@ -1,9 +1,9 @@
 import jim.interpreter
-from jim.builtins import nil
+import jim.builtins
 
 
 class Execution:
-	def __init__(self, *parameter_spec):
+	def __init__(self, parameter_spec):
 		# (func (x y (rest)) body...)
 		self.parameter_spec = parameter_spec
 
@@ -12,18 +12,21 @@ class Execution:
 
 
 class Function(Execution):
-	pass
+	def __init__(self, *parameter_spec):
+		super().__init__(parameter_spec)
 
 class Macro(Execution):
-	pass
-
-
-class JimmyProcedure(Execution):
-	def __init__(self, *parameter_spec, code):
+	def __init__(self, *parameter_spec):
 		super().__init__(parameter_spec)
+
+
+class JimmyFunction(Function):
+	def __init__(self, parameter_spec, code):
+		super().__init__(*parameter_spec)
 		self.code = code
 
 	def evaluate(self, stack_frame):
-		last = nil
+		last = jim.builtins.nil
 		for form in self.code:
-			jim.interpreter.evaluate(form)
+			last = jim.interpreter.evaluate(form)
+		return last
