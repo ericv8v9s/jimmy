@@ -97,6 +97,12 @@ class Conditional(jexec.Macro):
 		return nil
 
 
+class WhileLoop(jexec.Macro):
+	def __init__(self):
+		super().__init__("test-form", ["body"])
+	def evaluate(self, frame):
+
+
 class Addition(jexec.Function):
 	def __init__(self):
 		super().__init__(["terms"])
