@@ -23,6 +23,25 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
+class Assignment(jexec.Macro):
+	def __init__(self):
+		super().__init__("lhs", "rhs")
+
+	def evaluate(self, frame):
+		match frame["lhs"]:
+			case ("SYM", symbol):
+				lhs = symbol
+			case _:
+				raise jim.errors.SyntaxError(
+						frame["lhs"], "Assignment target is not a variable.")
+
+		with interpreter.switch_stack(frame.last_frame) as f:
+			rhs = interpreter.evaluate(frame["rhs"])
+			f.symbol_table[lhs] = rhs
+
+		return rhs
+
+
 # This is the lambda form.
 # There is no defun form. A defun is (assign xxx (func ...))
 class Lambda(jexec.Macro):
@@ -42,6 +61,40 @@ class Lambda(jexec.Macro):
 					raise jim.errors.SyntaxError(
 							param_spec_raw, "The parameter specification is invalid.")
 		return jexec.JimmyFunction(param_spec, frame["body"])
+
+
+class Progn(jexec.Macro):
+	def __init__(self):
+		super().__init__(["forms"])
+
+	def evaluate(self, frame):
+		body = frame["forms"]
+		result = nil
+		with interpreter.switch_stack(frame.last_frame):
+			for form in body:
+				result = interpreter.evaluate(form)
+		return result
+
+
+class Conditional(jexec.Macro):
+	def __init__(self):
+		# (cond
+		#   ((test1) things...)
+		#   ((test2) things...))
+		super().__init__(["branches"])
+
+	def evaluate(self, frame):
+		for b in frame["branches"]:
+			match b:
+				case (test, *body):
+					with interpreter.switch_stack(frame.last_frame):
+						if interpreter.evaluate(test) is not False:
+							# cond body is implicit progn
+							body.insert(0, ("SYM", "progn"))
+							return body
+				case _:
+					raise jim.errors.SyntaxError(b, "Invalid conditional branch.")
+		return nil
 
 
 class Addition(jexec.Function):
@@ -86,25 +139,6 @@ class Division(jexec.Function):
 		if len(terms) == 0:
 			return 1 // n
 		return n // product(terms)
-
-
-class Assignment(jexec.Macro):
-	def __init__(self):
-		super().__init__("lhs", "rhs")
-
-	def evaluate(self, frame):
-		match frame["lhs"]:
-			case ("SYM", symbol):
-				lhs = symbol
-			case _:
-				raise jim.errors.SyntaxError(
-						frame["lhs"], "Assignment target is not a variable.")
-
-		with interpreter.switch_stack(frame.last_frame) as f:
-			rhs = interpreter.evaluate(frame["rhs"])
-			f.symbol_table[lhs] = rhs
-
-		return rhs
 
 
 class Print(jexec.Function):

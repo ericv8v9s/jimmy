@@ -35,7 +35,8 @@ top_frame.symbol_table = {
 	#"list"  : jim.builtins.List(),
 	"assign": jim.builtins.Assignment(),
 	"func"  : jim.builtins.Lambda(),
-	#"cond"  : jim.builtins.Cond(),
+	"progn" : jim.builtins.Progn(),
+	"cond"  : jim.builtins.Conditional(),
 	#"while" : jim.builtins.While(),
 	# arithmetic
 	"+"     : jim.builtins.Addition(),
