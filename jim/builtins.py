@@ -141,6 +141,98 @@ class Division(jexec.Function):
 		return n // product(terms)
 
 
+class Modulo(jexec.Function):
+	def __init__(self):
+		super().__init__("x", "y")
+	def evaluate(self, frame):
+		x, y = frame["x"], frame["y"]
+		_require_ints([x, y])
+		return x % y
+
+
+def _chain_relation(relation_pred, a, b, more):
+		result = relation_pred(a, b)
+		for t in more:
+			if not result:
+				break
+			a = b
+			b = t
+			result = relation_pred(a, b)
+		return result
+
+
+class Equality(jexec.Function):
+	def __init__(self):
+		super().__init__("a", "b", ["more"])
+	def evaluate(self, frame):
+		return _chain_relation(
+			lambda a, b: a == b, frame["a"], frame["b"], frame["more"])
+
+
+class LessThan(jexec.Function):
+	def __init__(self):
+		super().__init__("a", "b", ["more"])
+	def evaluate(self, frame):
+		return _chain_relation(
+			lambda a, b: a < b, frame["a"], frame["b"], frame["more"])
+
+
+class GreaterThan(jexec.Function):
+	def __init__(self):
+		super().__init__("a", "b", ["more"])
+	def evaluate(self, frame):
+		return _chain_relation(
+			lambda a, b: a > b, frame["a"], frame["b"], frame["more"])
+
+
+class LessEqual(jexec.Function):
+	def __init__(self):
+		super().__init__("a", "b", ["more"])
+	def evaluate(self, frame):
+		return _chain_relation(
+			lambda a, b: a <= b, frame["a"], frame["b"], frame["more"])
+
+
+class GreaterEqual(jexec.Function):
+	def __init__(self):
+		super().__init__("a", "b", ["more"])
+	def evaluate(self, frame):
+		return _chain_relation(
+			lambda a, b: a >= b, frame["a"], frame["b"], frame["more"])
+
+
+class Conjunction(jexec.Macro):  # TODO should short circuit
+	def __init__(self):
+		super().__init__(["terms"])
+	def evaluate(self, frame):
+		result = True
+		for t in frame["terms"]:
+			with interpreter.switch_stack(frame.last_frame):
+				result = interpreter.evaluate(t)
+				if result is False:
+					return False
+		return result
+
+
+class Disjunction(jexec.Macro):
+	def __init__(self):
+		super().__init__(["terms"])
+	def evaluate(self, frame):
+		for t in frame["terms"]:
+			with interpreter.switch_stack(frame.last_frame):
+				result = interpreter.evaluate(t)
+				if result is not False:
+					return result
+		return False
+
+
+class Negation(jexec.Function):
+	def __init__(self):
+		super().__init__("p")
+	def evaluate(self, frame):
+		return not frame["p"]
+
+
 class Print(jexec.Function):
 	def __init__(self):
 		super().__init__("msg")

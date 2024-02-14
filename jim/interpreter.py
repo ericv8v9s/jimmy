@@ -43,16 +43,16 @@ top_frame.symbol_table = {
 	"-"     : jim.builtins.Subtraction(),
 	"*"     : jim.builtins.Multiplication(),
 	"/"     : jim.builtins.Division(),
-	#"%"     : jim.builtins.(...),
+	"%"     : jim.builtins.Modulo(),
 	# tests
-	#"="     : jim.builtins.(...),
-	#"<"     : jim.builtins.(...),
-	#">"     : jim.builtins.(...),
-	#"<="    : jim.builtins.(...),
-	#">="    : jim.builtins.(...),
-	#"and"   : jim.builtins.(...),
-	#"or"    : jim.builtins.(...),
-	#"not"   : jim.builtins.(...),
+	"="     : jim.builtins.Equality(),
+	"<"     : jim.builtins.LessThan(),
+	">"     : jim.builtins.GreaterThan(),
+	"<="    : jim.builtins.LessEqual(),
+	">="    : jim.builtins.GreaterEqual(),
+	"and"   : jim.builtins.Conjunction(),
+	"or"    : jim.builtins.Disjunction(),
+	"not"   : jim.builtins.Negation(),
 
 	"print" : jim.builtins.Print()
 }
