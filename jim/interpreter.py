@@ -32,7 +32,7 @@ top_frame.symbol_table = {
 	"nil"   : jim.builtins.nil,
 	"true"  : True,
 	"false" : False,
-	#"list"  : jim.builtins.List(),
+	"list"  : jim.builtins.List(),
 	"assign": jim.builtins.Assignment(),
 	"func"  : jim.builtins.Lambda(),
 	"progn" : jim.builtins.Progn(),

@@ -31,6 +31,14 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
+class List(jexec.Function):
+	def __init__(self):
+		super().__init__(["elements"])
+
+	def evaluate(self, frame):
+		return frame["elements"]
+
+
 class Assignment(jexec.Macro):
 	def __init__(self):
 		super().__init__("lhs", "rhs")
@@ -47,7 +55,7 @@ class Assignment(jexec.Macro):
 			rhs = interpreter.evaluate(frame["rhs"])
 			f.symbol_table[lhs] = rhs
 
-		return rhs
+		return rhs  # TODO don't evaluate this
 
 
 # This is the lambda form.
@@ -256,5 +264,9 @@ class Print(jexec.Function):
 	def __init__(self):
 		super().__init__("msg")
 	def evaluate(self, frame):
-		print(jim.utils.form_to_str(frame["msg"]))
+		msg = frame["msg"]
+		if isinstance(msg, str):
+			print(msg)
+		else:
+			print(jim.utils.form_to_str(msg))
 		return nil
