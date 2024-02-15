@@ -33,15 +33,15 @@ def product(values):  # just like the builtin sum
 
 class List(jexec.Function):
 	def __init__(self):
-		super().__init__(["elements"])
+		super().__init__([["elements"]])
 
 	def evaluate(self, frame):
 		return frame["elements"]
 
 
-class Assignment(jexec.Macro):
+class Assignment(jexec.Execution):
 	def __init__(self):
-		super().__init__("lhs", "rhs")
+		super().__init__(["lhs", "rhs"])
 
 	def evaluate(self, frame):
 		match frame["lhs"]:
@@ -55,14 +55,14 @@ class Assignment(jexec.Macro):
 			rhs = interpreter.evaluate(frame["rhs"])
 			f.symbol_table[lhs] = rhs
 
-		return rhs  # TODO don't evaluate this
+		return rhs
 
 
 # This is the lambda form.
 # There is no defun form. A defun is (assign xxx (func ...))
-class Lambda(jexec.Macro):
+class Lambda(jexec.Execution):
 	def __init__(self):
-		super().__init__("param_spec", ["body"])
+		super().__init__(["param_spec", ["body"]])
 
 	def evaluate(self, frame):
 		param_spec_raw = frame["param_spec"]
@@ -79,9 +79,9 @@ class Lambda(jexec.Macro):
 		return jexec.JimmyFunction(param_spec, frame["body"])
 
 
-class Progn(jexec.Macro):
+class Progn(jexec.Execution):
 	def __init__(self):
-		super().__init__(["forms"])
+		super().__init__([["forms"]])
 
 	def evaluate(self, frame):
 		body = frame["forms"]
@@ -92,12 +92,12 @@ class Progn(jexec.Macro):
 		return result
 
 
-class Conditional(jexec.Macro):
+class Conditional(jexec.Execution):
 	def __init__(self):
 		# (cond
 		#   ((test1) things...)
 		#   ((test2) things...))
-		super().__init__(["branches"])
+		super().__init__([["branches"]])
 
 	def evaluate(self, frame):
 		for b in frame["branches"]:
@@ -111,9 +111,9 @@ class Conditional(jexec.Macro):
 		return nil
 
 
-class WhileLoop(jexec.Macro):
+class WhileLoop(jexec.Execution):
 	def __init__(self):
-		super().__init__("test-form", ["body"])
+		super().__init__(["test-form", ["body"]])
 	def evaluate(self, frame):
 		test, body = frame["test-form"], frame["body"]
 		with interpreter.switch_stack(frame.last_frame):
@@ -126,7 +126,7 @@ class WhileLoop(jexec.Macro):
 
 class Addition(jexec.Function):
 	def __init__(self):
-		super().__init__(["terms"])
+		super().__init__([["terms"]])
 	def evaluate(self, frame):
 		terms = frame["terms"]
 		_require_ints(terms)
@@ -135,7 +135,7 @@ class Addition(jexec.Function):
 
 class Subtraction(jexec.Function):
 	def __init__(self):
-		super().__init__("n", ["terms"])
+		super().__init__(["n", ["terms"]])
 	def evaluate(self, frame):
 		n = frame["n"]
 		terms = frame["terms"]
@@ -148,7 +148,7 @@ class Subtraction(jexec.Function):
 
 class Multiplication(jexec.Function):
 	def __init__(self):
-		super().__init__(["terms"])
+		super().__init__([["terms"]])
 	def evaluate(self, frame):
 		terms = frame["terms"]
 		_require_ints(terms)
@@ -157,7 +157,7 @@ class Multiplication(jexec.Function):
 
 class Division(jexec.Function):
 	def __init__(self):
-		super().__init__("n", ["terms"])
+		super().__init__(["n", ["terms"]])
 	def evaluate(self, frame):
 		n = frame["n"]
 		terms = frame["terms"]
@@ -170,7 +170,7 @@ class Division(jexec.Function):
 
 class Modulo(jexec.Function):
 	def __init__(self):
-		super().__init__("x", "y")
+		super().__init__(["x", "y"])
 	def evaluate(self, frame):
 		x, y = frame["x"], frame["y"]
 		_require_ints([x, y])
@@ -190,7 +190,7 @@ def _chain_relation(relation_pred, a, b, more):
 
 class Equality(jexec.Function):
 	def __init__(self):
-		super().__init__("a", "b", ["more"])
+		super().__init__(["a", "b", ["more"]])
 	def evaluate(self, frame):
 		return _chain_relation(
 			lambda a, b: a == b, frame["a"], frame["b"], frame["more"])
@@ -198,7 +198,7 @@ class Equality(jexec.Function):
 
 class LessThan(jexec.Function):
 	def __init__(self):
-		super().__init__("a", "b", ["more"])
+		super().__init__(["a", "b", ["more"]])
 	def evaluate(self, frame):
 		return _chain_relation(
 			lambda a, b: a < b, frame["a"], frame["b"], frame["more"])
@@ -206,7 +206,7 @@ class LessThan(jexec.Function):
 
 class GreaterThan(jexec.Function):
 	def __init__(self):
-		super().__init__("a", "b", ["more"])
+		super().__init__(["a", "b", ["more"]])
 	def evaluate(self, frame):
 		return _chain_relation(
 			lambda a, b: a > b, frame["a"], frame["b"], frame["more"])
@@ -214,7 +214,7 @@ class GreaterThan(jexec.Function):
 
 class LessEqual(jexec.Function):
 	def __init__(self):
-		super().__init__("a", "b", ["more"])
+		super().__init__(["a", "b", ["more"]])
 	def evaluate(self, frame):
 		return _chain_relation(
 			lambda a, b: a <= b, frame["a"], frame["b"], frame["more"])
@@ -222,15 +222,15 @@ class LessEqual(jexec.Function):
 
 class GreaterEqual(jexec.Function):
 	def __init__(self):
-		super().__init__("a", "b", ["more"])
+		super().__init__(["a", "b", ["more"]])
 	def evaluate(self, frame):
 		return _chain_relation(
 			lambda a, b: a >= b, frame["a"], frame["b"], frame["more"])
 
 
-class Conjunction(jexec.Macro):  # TODO should short circuit
+class Conjunction(jexec.Execution):
 	def __init__(self):
-		super().__init__(["terms"])
+		super().__init__([["terms"]])
 	def evaluate(self, frame):
 		result = True
 		for t in frame["terms"]:
@@ -241,9 +241,9 @@ class Conjunction(jexec.Macro):  # TODO should short circuit
 		return result
 
 
-class Disjunction(jexec.Macro):
+class Disjunction(jexec.Execution):
 	def __init__(self):
-		super().__init__(["terms"])
+		super().__init__([["terms"]])
 	def evaluate(self, frame):
 		for t in frame["terms"]:
 			with interpreter.switch_stack(frame.last_frame):
@@ -255,14 +255,14 @@ class Disjunction(jexec.Macro):
 
 class Negation(jexec.Function):
 	def __init__(self):
-		super().__init__("p")
+		super().__init__(["p"])
 	def evaluate(self, frame):
 		return not frame["p"]
 
 
 class Print(jexec.Function):
 	def __init__(self):
-		super().__init__("msg")
+		super().__init__(["msg"])
 	def evaluate(self, frame):
 		msg = frame["msg"]
 		if isinstance(msg, str):

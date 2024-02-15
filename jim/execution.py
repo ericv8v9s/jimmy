@@ -11,18 +11,22 @@ class Execution:
 		pass
 
 
-class Function(Execution):
-	def __init__(self, *parameter_spec):
+class EvaluateIn: pass
+class EvaluateOut: pass
+
+
+class Function(Execution, EvaluateIn):
+	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 
-class Macro(Execution):
-	def __init__(self, *parameter_spec):
+class Macro(Execution, EvaluateOut):
+	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 
 
 class JimmyFunction(Function):
 	def __init__(self, parameter_spec, code):
-		super().__init__(*parameter_spec)
+		super().__init__(parameter_spec)
 		self.code = code
 
 	def evaluate(self, stack_frame):

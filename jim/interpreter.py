@@ -103,13 +103,19 @@ def evaluate(form):
 		execution = evaluate(form[0])
 		argv = form[1:]
 
-		if isinstance(execution, jexec.Macro):
-			return evaluate(invoke(form, execution, argv))
-		elif isinstance(execution, jexec.Function):
-			argv = [evaluate(arg) for arg in argv]
-			return invoke(form, execution, argv)
-		else:
+		if not isinstance(execution, jexec.Execution):
 			raise JimmyError(form, "Invocation target is invalid.")
+
+		if isinstance(execution, jexec.EvaluateIn):
+			argv = [evaluate(arg) for arg in argv]
+
+		result = invoke(form, execution, argv)
+
+		if isinstance(execution, jexec.EvaluateOut):
+			return evaluate(result)
+		else:
+			return result
+
 	else:  # otherwise, consider it to be a raw object already evaluated
 		return form
 
