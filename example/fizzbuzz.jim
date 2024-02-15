@@ -1,0 +1,8 @@
+(assign n 0)
+(while (< n 100)
+	(assign n (+ n 1))
+	(cond
+		((= 0 (% n 15)) (print "FizzBuzz"))
+		((= 0 (% n 3)) (print "Fizz"))
+		((= 0 (% n 5)) (print "Buzz"))
+		(true (print n))))
