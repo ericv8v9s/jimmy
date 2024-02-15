@@ -10,6 +10,14 @@ class Nil:
 nil = Nil()
 
 
+def _truthy(v):
+	return v is not False
+
+
+def _wrap_progn(forms):
+	return [("SYM", "progn")] + forms
+
+
 def _require_ints(values):
 	for n in values:
 		if not isinstance(n, int):
@@ -88,10 +96,8 @@ class Conditional(jexec.Macro):
 			match b:
 				case (test, *body):
 					with interpreter.switch_stack(frame.last_frame):
-						if interpreter.evaluate(test) is not False:
-							# cond body is implicit progn
-							body.insert(0, ("SYM", "progn"))
-							return body
+						if _truthy(interpreter.evaluate(test)):
+							return _wrap_progn(body)
 				case _:
 					raise jim.errors.SyntaxError(b, "Invalid conditional branch.")
 		return nil
@@ -101,6 +107,13 @@ class WhileLoop(jexec.Macro):
 	def __init__(self):
 		super().__init__("test-form", ["body"])
 	def evaluate(self, frame):
+		test, body = frame["test-form"], frame["body"]
+		with interpreter.switch_stack(frame.last_frame):
+			result = nil
+			progn_body = _wrap_progn(body)
+			while _truthy(interpreter.evaluate(test)):
+				result = interpreter.evaluate(progn_body)
+			return result
 
 
 class Addition(jexec.Function):
@@ -215,7 +228,7 @@ class Conjunction(jexec.Macro):  # TODO should short circuit
 		for t in frame["terms"]:
 			with interpreter.switch_stack(frame.last_frame):
 				result = interpreter.evaluate(t)
-				if result is False:
+				if not _truthy(result):
 					return False
 		return result
 
@@ -227,7 +240,7 @@ class Disjunction(jexec.Macro):
 		for t in frame["terms"]:
 			with interpreter.switch_stack(frame.last_frame):
 				result = interpreter.evaluate(t)
-				if result is not False:
+				if _truthy(result):
 					return result
 		return False
 
