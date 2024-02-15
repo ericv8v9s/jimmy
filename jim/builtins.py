@@ -92,7 +92,7 @@ class Progn(jexec.Execution):
 		return result
 
 
-class Conditional(jexec.Execution):
+class Conditional(jexec.Macro):
 	def __init__(self):
 		# (cond
 		#   ((test1) things...)
@@ -257,7 +257,7 @@ class Negation(jexec.Function):
 	def __init__(self):
 		super().__init__(["p"])
 	def evaluate(self, frame):
-		return not frame["p"]
+		return not _truthy(frame["p"])
 
 
 class Print(jexec.Function):
