@@ -68,8 +68,12 @@ def iter_stack():
 def push_new_frame(call_form):
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
-	yield top_frame
-	top_frame = top_frame.last_frame
+	try:
+		yield top_frame
+	except:
+		raise
+	finally:
+		top_frame = top_frame.last_frame
 
 
 @contextmanager
@@ -77,8 +81,12 @@ def switch_stack(new_top_frame):
 	global top_frame
 	saved = top_frame
 	top_frame = new_top_frame
-	yield new_top_frame
-	top_frame = saved
+	try:
+		yield new_top_frame
+	except:
+		raise
+	finally:
+		top_frame = saved
 
 
 def top_level_evaluate(form):
