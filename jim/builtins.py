@@ -31,14 +31,6 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
-class List(jexec.Function):
-	def __init__(self):
-		super().__init__([["elements"]])
-
-	def evaluate(self, frame):
-		return frame["elements"]
-
-
 class Assignment(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
@@ -163,9 +155,12 @@ class Division(jexec.Function):
 		terms = frame["terms"]
 		_require_ints(terms + [n])
 
-		if len(terms) == 0:
-			return 1 // n
-		return n // product(terms)
+		try:
+			if len(terms) == 0:
+				return 1 // n
+			return n // product(terms)
+		except ZeroDivisionError:
+			raise jim.errors.DivideByZeroError(frame.call_form)
 
 
 class Modulo(jexec.Function):
@@ -174,6 +169,8 @@ class Modulo(jexec.Function):
 	def evaluate(self, frame):
 		x, y = frame["x"], frame["y"]
 		_require_ints([x, y])
+		if y == 0:
+			raise jim.errors.DivideByZeroError(frame.call_form)
 		return x % y
 
 
@@ -270,3 +267,40 @@ class Print(jexec.Function):
 		else:
 			print(jim.utils.form_to_str(msg))
 		return nil
+
+
+class List(jexec.Function):
+	def __init__(self):
+		super().__init__([["elements"]])
+	def evaluate(self, frame):
+		return frame["elements"]
+
+class ListGet(jexec.Function):
+	def __init__(self):
+		super().__init__(["lst", "idx"])
+	def evaluate(self, frame):
+		lst, idx = frame["lst"], frame["idx"]
+		if not (0 <= idx < len(lst)):
+			raise jim.errors.IndexError(frame.call_form)
+		return lst[idx]
+
+class ListSet(jexec.Function):
+	def __init__(self):
+		super().__init__(["lst", "idx", "val"])
+	def evaluate(self, frame):
+		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
+		if not (0 <= idx < len(lst)):
+			raise jim.errors.IndexError(frame.call_form)
+		lst[idx] = val
+		return val
+
+
+class Length(jexec.Function):
+	def __init__(self):
+		super().__init__(["sequence"])
+	def evaluate(self, frame):
+		try:
+			return len(frame["sequence"])
+		except TypeError:
+			raise jim.errors.JimmyError(
+				frame.call_form, "Object has no concept of length.")

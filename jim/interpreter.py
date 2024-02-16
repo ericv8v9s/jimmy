@@ -27,34 +27,38 @@ class Stackframe:
 
 top_frame = Stackframe(None, "base frame")
 top_frame.symbol_table = {
-	# TODO initialize builtins
 	# builtin core stuff
 	"nil"   : jim.builtins.nil,
 	"true"  : True,
 	"false" : False,
-	"list"  : jim.builtins.List(),
 	"assign": jim.builtins.Assignment(),
 	"func"  : jim.builtins.Lambda(),
 	"progn" : jim.builtins.Progn(),
 	"cond"  : jim.builtins.Conditional(),
 	"while" : jim.builtins.WhileLoop(),
-	# arithmetic
-	"+"     : jim.builtins.Addition(),
-	"-"     : jim.builtins.Subtraction(),
-	"*"     : jim.builtins.Multiplication(),
-	"/"     : jim.builtins.Division(),
-	"%"     : jim.builtins.Modulo(),
-	# tests
-	"="     : jim.builtins.Equality(),
-	"<"     : jim.builtins.LessThan(),
-	">"     : jim.builtins.GreaterThan(),
-	"<="    : jim.builtins.LessEqual(),
-	">="    : jim.builtins.GreaterEqual(),
-	"and"   : jim.builtins.Conjunction(),
-	"or"    : jim.builtins.Disjunction(),
-	"not"   : jim.builtins.Negation(),
 
-	"print" : jim.builtins.Print()
+	# arithmetic
+	"+": jim.builtins.Addition(),
+	"-": jim.builtins.Subtraction(),
+	"*": jim.builtins.Multiplication(),
+	"/": jim.builtins.Division(),
+	"%": jim.builtins.Modulo(),
+
+	# tests
+	"="  : jim.builtins.Equality(),
+	"<"  : jim.builtins.LessThan(),
+	">"  : jim.builtins.GreaterThan(),
+	"<=" : jim.builtins.LessEqual(),
+	">=" : jim.builtins.GreaterEqual(),
+	"and": jim.builtins.Conjunction(),
+	"or" : jim.builtins.Disjunction(),
+	"not": jim.builtins.Negation(),
+
+	"print"   : jim.builtins.Print(),
+	"list"    : jim.builtins.List(),
+	"list-get": jim.builtins.ListGet(),
+	"list-set": jim.builtins.ListSet(),
+	"len"     : jim.builtins.Length()
 }
 
 def iter_stack():

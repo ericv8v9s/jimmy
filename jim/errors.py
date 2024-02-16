@@ -30,6 +30,10 @@ class ArgumentMismatchError(JimmyError):
 	def __init__(self, offending_form, msg="Arguments do not match the parameters."):
 		super().__init__(offending_form, msg)
 
+class IndexError(JimmyError):
+	def __init__(self, offending_form, msg="List index is out of bounds."):
+		super().__init__(offending_form, msg)
+
 class SyntaxError(JimmyError): pass
 
 
