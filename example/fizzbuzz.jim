@@ -1,8 +1,11 @@
+(assign fizzbuzz-msg (func (n)
+	(cond
+		((= 0 (% n 15)) "FizzBuzz")
+		((= 0 (% n 3)) "Fizz")
+		((= 0 (% n 5)) "Buzz")
+		(true n))))
+
 (assign n 0)
 (while (< n 100)
 	(assign n (+ n 1))
-	(cond
-		((= 0 (% n 15)) (print "FizzBuzz"))
-		((= 0 (% n 3)) (print "Fizz"))
-		((= 0 (% n 5)) (print "Buzz"))
-		(true (print n))))
+	(print (fizzbuzz-msg n)))
