@@ -110,7 +110,7 @@ def evaluate(form):
 	elif isinstance(form, list):
 		# empty form is nil literal
 		if len(form) == 0:
-			return nil
+			return jim.builtins.nil
 
 		execution = evaluate(form[0])
 		argv = form[1:]
