@@ -70,6 +70,7 @@ def iter_stack():
 
 @contextmanager
 def push_new_frame(call_form):
+	#print(f"DEBUG: PUSH: {utils.form_to_str(call_form)}")
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
 	try:
@@ -78,6 +79,7 @@ def push_new_frame(call_form):
 		raise
 	finally:
 		top_frame = top_frame.last_frame
+		#print(f"DEBUG: POP: {utils.form_to_str(call_form)}")
 
 
 @contextmanager
