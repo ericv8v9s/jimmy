@@ -15,13 +15,16 @@ def repl():
 	read_char = lambda: stdin.read(1)
 	while True:
 		print("IN: ", end="", flush=True)
-		parsed = reader.parse(read_char)
-		result = interpreter.top_level_evaluate(parsed)
 
+		try:
+			parsed = reader.parse(read_char)
+		except reader.ParseError as e:
+			print(str(e))
+			continue
 		if parsed is None:
-			print()
 			break
 
+		result = interpreter.top_level_evaluate(parsed)
 		if result is not None:
 			print("OUT:", utils.form_to_str(result), flush=True)
 
@@ -33,9 +36,14 @@ def run_file(fname):
 		f = open(fname)
 	with f:
 		while True:
-			form = reader.parse(lambda: f.read(1))
+			try:
+				form = reader.parse(lambda: f.read(1))
+			except reader.ParseError as e:
+				print(str(e))
+				break
 			if form is None:
 				break
+
 			if interpreter.top_level_evaluate(form) is None:
 				break
 
