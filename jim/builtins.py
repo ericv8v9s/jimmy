@@ -31,6 +31,14 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
+class Assertion(jexec.Function):
+	def __init__(self):
+		super().__init__(["expr"])
+	def evaluate(self, frame):
+		if not _truthy(frame["expr"]):
+			raise jim.errors.AssertionError(frame["expr"])
+		return nil
+
 class Assignment(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])

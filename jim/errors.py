@@ -34,6 +34,10 @@ class IndexError(JimmyError):
 	def __init__(self, offending_form, msg="List index is out of bounds."):
 		super().__init__(offending_form, msg)
 
+class AssertionError(JimmyError):
+	def __init__(self, offending_form, msg="Assertion not satisfied."):
+		super().__init__(offending_form, msg)
+
 class SyntaxError(JimmyError): pass
 
 

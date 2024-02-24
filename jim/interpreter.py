@@ -25,41 +25,47 @@ class Stackframe:
 		return self.symbol_table[key]
 
 
+def init_frame_builtins(frame):
+	frame.symbol_table.update({
+		# builtin core stuff
+		"nil"   : jim.builtins.nil,
+		"true"  : True,
+		"false" : False,
+		"assert": jim.builtins.Assertion(),
+		"assign": jim.builtins.Assignment(),
+		"func"  : jim.builtins.Lambda(),
+		"progn" : jim.builtins.Progn(),
+		"cond"  : jim.builtins.Conditional(),
+		"while" : jim.builtins.WhileLoop(),
+
+		# arithmetic
+		"+": jim.builtins.Addition(),
+		"-": jim.builtins.Subtraction(),
+		"*": jim.builtins.Multiplication(),
+		"/": jim.builtins.Division(),
+		"%": jim.builtins.Modulo(),
+
+		# tests
+		"="  : jim.builtins.Equality(),
+		"<"  : jim.builtins.LessThan(),
+		">"  : jim.builtins.GreaterThan(),
+		"<=" : jim.builtins.LessEqual(),
+		">=" : jim.builtins.GreaterEqual(),
+		"and": jim.builtins.Conjunction(),
+		"or" : jim.builtins.Disjunction(),
+		"not": jim.builtins.Negation(),
+
+		"print"   : jim.builtins.Print(),
+		"list"    : jim.builtins.List(),
+		"list-get": jim.builtins.ListGet(),
+		"list-set": jim.builtins.ListSet(),
+		"len"     : jim.builtins.Length()
+	})
+
+
 top_frame = Stackframe(None, "base frame")
-top_frame.symbol_table = {
-	# builtin core stuff
-	"nil"   : jim.builtins.nil,
-	"true"  : True,
-	"false" : False,
-	"assign": jim.builtins.Assignment(),
-	"func"  : jim.builtins.Lambda(),
-	"progn" : jim.builtins.Progn(),
-	"cond"  : jim.builtins.Conditional(),
-	"while" : jim.builtins.WhileLoop(),
+init_frame_builtins(top_frame)
 
-	# arithmetic
-	"+": jim.builtins.Addition(),
-	"-": jim.builtins.Subtraction(),
-	"*": jim.builtins.Multiplication(),
-	"/": jim.builtins.Division(),
-	"%": jim.builtins.Modulo(),
-
-	# tests
-	"="  : jim.builtins.Equality(),
-	"<"  : jim.builtins.LessThan(),
-	">"  : jim.builtins.GreaterThan(),
-	"<=" : jim.builtins.LessEqual(),
-	">=" : jim.builtins.GreaterEqual(),
-	"and": jim.builtins.Conjunction(),
-	"or" : jim.builtins.Disjunction(),
-	"not": jim.builtins.Negation(),
-
-	"print"   : jim.builtins.Print(),
-	"list"    : jim.builtins.List(),
-	"list-get": jim.builtins.ListGet(),
-	"list-set": jim.builtins.ListSet(),
-	"len"     : jim.builtins.Length()
-}
 
 def iter_stack():
 	f = top_frame
