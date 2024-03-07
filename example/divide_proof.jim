@@ -5,7 +5,7 @@
 [assert (not (= y 0))]  ; nothing is ever auto-inferred
 ; assert in brackets refers to the rule of assertion
 
-[= (= x x)]
+[=intr (= x x)]
 (assign r x)
 [assign (= x r)]  ; rule of assignment; substitute r for x gives (= x x)
 [mark xr1]  ; marks last result as "xr1"
@@ -22,19 +22,17 @@
 [(sub y0 xr3) (= x (+ r (* y 0)))]
 [mark xr4]
 
-[= (= 0 0)]
+[=intr (= 0 0)]
 (assign q 0)
 [assign (= 0 q)]
 ; every formula involving q not explicitly shown is invalidated
 [(sub (= 0 q) xr4) (= x (+ r (* y q)))]  [mark invar]  ; loop invariant
 
-(while (<= y r)
-	{  ; begins sub-proof
-	[assume (<= y r)]  ; not used, not actually needed to assume
-	
+(while (<= y r)  [assume (<= y r)]  ; not used; required by form
+	; begins sub-proof
 	; TODO find a way to derive this
 	[(= x (+ (- r y) y (* y q)))]
-	
+
 	(assign r (- r y))
 	[assign (= x (+ r y (* y q)))]  [mark crit-b1]
 	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit-b2]
@@ -43,7 +41,7 @@
 	[(sub crit-b3 crit-b4) (= x (+ r (* y (+ q 1))))]
 	(assign q (+ q 1))
 	; we have loop invariant again [(= x (+ r (* y q)))]
-	[invar]})
+	[assign invar])
 
 ; We can examine the set of results known before the form and the form itself
 ; The previous while form must have a single sub-proof,
