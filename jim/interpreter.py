@@ -1,9 +1,9 @@
 from contextlib import contextmanager
 
 import jim.builtins
-import jim.utils as utils
 import jim.execution as jexec
 from jim.errors import *
+from jim.syntax import *
 
 
 class Stackframe:
@@ -75,7 +75,7 @@ def iter_stack():
 
 @contextmanager
 def push_new_frame(call_form):
-	#print(f"DEBUG: PUSH: {utils.form_to_str(call_form)}")
+	#print(f"DEBUG: PUSH: {call_form}")
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
 	try:
@@ -84,7 +84,7 @@ def push_new_frame(call_form):
 		raise
 	finally:
 		top_frame = top_frame.last_frame
-		#print(f"DEBUG: POP: {utils.form_to_str(call_form)}")
+		#print(f"DEBUG: POP: {call_form}")
 
 
 @contextmanager
@@ -107,49 +107,45 @@ def top_level_evaluate(form):
 		import sys
 		print(format_error(e), file=sys.stderr)
 
-def evaluate(form):
+
+def evaluate(obj):
 	"""Computes a value for the form parsed by reader."""
 
-	#print(f"DEBUG: evaluate( {utils.form_to_str(form)} )")
+	#print(f"DEBUG: evaluate( {obj} )")
 
-	if isinstance(form, tuple):
-		return evaluate_atom(form)
-	elif isinstance(form, list):
-		# empty form is nil literal
-		if len(form) == 0:
-			return jim.builtins.nil
+	match obj:
+		case Integer(value=v):
+			return v
+		case Symbol(value=name):
+			return top_frame.lookup(name)
+		case String(value=s):
+			return s
 
-		execution = evaluate(form[0])
-		argv = form[1:]
+		case CompoundForm(children=forms):
+			if len(forms) == 0:
+				return jim.builtins.nil
+			return invoke(obj)
 
-		if not isinstance(execution, jexec.Execution):
-			raise JimmyError(form, "Invocation target is invalid.")
+		case CodeObject():
+			# comments and proof annotations are noops
+			return None
 
-		if isinstance(execution, jexec.EvaluateIn):
-			argv = [evaluate(arg) for arg in argv]
-
-		result = invoke(form, execution, argv)
-
-		if isinstance(execution, jexec.EvaluateOut):
-			return evaluate(result)
-		else:
-			return result
-
-	else:  # otherwise, consider it to be a raw object already evaluated
-		return form
+		case _:
+			# consider it to be a raw object already evaluated
+			return obj
 
 
-def evaluate_atom(atom):
-	t, v = atom
-	if t == "LIT":
-		return v
-	if t == "SYM":
-		return top_frame.lookup(v)
-	assert False
+def invoke(compound):
+	execution = evaluate(compound[0])
+	argv = compound[1:]
 
+	if not isinstance(execution, jexec.Execution):
+		raise JimmyError(form, "Invocation target is invalid.")
 
-def invoke(form, execution, argv):
-	#print(f"DEBUG: invoke({form}, {execution}, {argv})")
+	if isinstance(execution, jexec.EvaluateIn):
+		argv = [evaluate(arg) for arg in argv]
+
+	#print(f"DEBUG: invoke: ({execution} {argv})")
 
 	params = dict()  # collects arguments to match up with parameters
 	argv_idx = 0
@@ -165,6 +161,11 @@ def invoke(form, execution, argv):
 			params[p[0]] = argv[argv_idx:]
 			argv_idx += len(params[p[0]])
 
-	with push_new_frame(form) as f:
+	with push_new_frame(compound) as f:
 		f.symbol_table.update(params)
-		return execution.evaluate(f)
+		result = execution.evaluate(f)
+
+	if isinstance(execution, jexec.EvaluateOut):
+		return evaluate(result)
+	else:
+		return result

@@ -1,5 +1,4 @@
 import jim.interpreter
-import jim.utils as utils
 
 #In calling
 #  1: (call 1)
@@ -44,11 +43,11 @@ class SyntaxError(JimmyError): pass
 def format_error(e):
 	result = "In calling\n"
 	for i, f in enumerate(reversed(e.stackframes)):
-		result += f"  {i}: {utils.form_to_str(f.call_form)}\n"
+		result += f"  {i}: {f.call_form}\n"
 
 	result += (
 			"The evaluation of\n"
-			f"  {utils.form_to_str(e.offending_form)}\n"
+			f"  {e.offending_form}\n"
 			"Failed because\n"
 			f"  {e.msg}")
 

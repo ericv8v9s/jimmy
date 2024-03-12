@@ -1,5 +1,5 @@
-from jim import reader, interpreter, utils
-from sys import stdin
+from jim import reader, interpreter
+import sys
 
 
 def main(argv):
@@ -12,26 +12,26 @@ def main(argv):
 
 
 def repl():
-	read_char = lambda: stdin.read(1)
 	while True:
 		print("IN: ", end="", flush=True)
 
 		try:
-			parsed = reader.parse(read_char)
+			parsed = reader.parse(lambda: sys.stdin.read(1))
 		except reader.ParseError as e:
-			print(str(e))
-			continue
+			print(str(e), file=sys.stderr)
+			break
+
 		if parsed is None:
 			break
 
 		result = interpreter.top_level_evaluate(parsed)
 		if result is not None:
-			print("OUT:", utils.form_to_str(result), flush=True)
+			print("OUT:", result, flush=True)
 
 
 def run_file(fname):
 	if fname == "-":
-		f = stdin
+		f = sys.stdin
 	else:
 		f = open(fname)
 	with f:
@@ -39,15 +39,12 @@ def run_file(fname):
 			try:
 				form = reader.parse(lambda: f.read(1))
 			except reader.ParseError as e:
-				print(str(e))
+				print(str(e), file=sys.stderr)
 				break
 			if form is None:
 				break
-
-			if interpreter.top_level_evaluate(form) is None:
-				break
+			interpreter.top_level_evaluate(form)
 
 
 if __name__ == "__main__":
-	import sys
 	main(sys.argv)

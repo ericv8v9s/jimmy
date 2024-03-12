@@ -1,7 +1,7 @@
 import jim.execution as jexec
 import jim.interpreter as interpreter
 import jim.errors
-import jim.utils
+from jim.syntax import *
 
 
 class Nil:
@@ -15,7 +15,7 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
-	return [("SYM", "progn")] + forms
+	return CompoundForm([Symbol("progn")] + forms)
 
 
 def _require_ints(values):
@@ -45,7 +45,7 @@ class Assignment(jexec.Execution):
 
 	def evaluate(self, frame):
 		match frame["lhs"]:
-			case ("SYM", symbol):
+			case Symbol(value=symbol):
 				lhs = symbol
 			case _:
 				raise jim.errors.SyntaxError(
@@ -69,9 +69,9 @@ class Lambda(jexec.Execution):
 		param_spec = []
 		for p in param_spec_raw:
 			match p:
-				case ("SYM", symbol):  # positional
+				case Symbol(value=symbol):  # positional
 					param_spec.append(symbol)
-				case [("SYM", symbol)]:  # rest
+				case CompoundForm(children=[Symbol(value=symbol)]):  # rest
 					param_spec.append([symbol])
 				case _:
 					raise jim.errors.SyntaxError(
@@ -102,7 +102,7 @@ class Conditional(jexec.Macro):
 	def evaluate(self, frame):
 		for b in frame["branches"]:
 			match b:
-				case (test, *body):
+				case CompoundForm(children=[test, *body]):
 					with interpreter.switch_stack(frame.last_frame):
 						if _truthy(interpreter.evaluate(test)):
 							return _wrap_progn(body)
@@ -269,11 +269,7 @@ class Print(jexec.Function):
 	def __init__(self):
 		super().__init__(["msg"])
 	def evaluate(self, frame):
-		msg = frame["msg"]
-		if isinstance(msg, str):
-			print(msg)
-		else:
-			print(jim.utils.form_to_str(msg))
+		print(frame["msg"])
 		return nil
 
 
