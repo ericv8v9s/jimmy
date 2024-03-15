@@ -69,28 +69,35 @@ def _wrap_char_source(get_next_char):
 	"""
 
 	def char_gen():
-		global _next_char
+		global _next_char, _line_num
 		while True:
 			while _next_char >= len(_buffer):
-				_buffer.append(get_next_char())
+				c = get_next_char()
+				if c == '\n':
+					_line_num += 1
+				_buffer.append(c)
+
 			out = _buffer[_next_char]
 			_next_char += 1
 			yield out
 	return char_gen()
 
 
+def _lookahead1(c):
+	@_component_parser
+	def lookahead(chars):
+		return ParseResult(next(chars) == c)
+	return lookahead
+
+
 def parse(get_next_char):
 	chars = _wrap_char_source(get_next_char)
 
 	skip_whitespace(chars)
-	if _lookahead_eof(chars).success:
+	if _lookahead1("")(chars).success:  # empty string indicates EOF
 		return None
 
 	return parse_form(chars).result
-
-@_component_parser
-def _lookahead_eof(chars):
-	return ParseResult(next(chars) == "")
 
 
 @_component_parser
@@ -105,6 +112,7 @@ def parse_form(chars):
 	order = [
 		parse_comment,
 		parse_compound,
+		parse_proof_anno,
 		parse_string,
 		parse_integer,
 		parse_symbol]
@@ -124,13 +132,19 @@ def parse_compound(chars):
 	if next(chars) != '(':
 		return ParseResult(False)
 	forms = []
-	while not _lookahead_compound_close(chars).success:
+	while not _lookahead1(')')(chars).success:
 		forms.append(parse_form(chars).result)
 	return ParseResult(True, CompoundForm(forms))
 
+
 @_component_parser
-def _lookahead_compound_close(chars):
-	return ParseResult(next(chars) == ')')
+def parse_proof_anno(chars):
+	if next(chars) != '[':
+		return ParseResult(False)
+	forms = []
+	while not _lookahead1(']')(chars).success:
+		forms.append(parse_form(chars).result)
+	return ParseResult(True, ProofAnnotation(forms))
 
 
 @_component_parser

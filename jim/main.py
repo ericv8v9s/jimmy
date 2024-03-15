@@ -43,6 +43,7 @@ def run_file(fname):
 				break
 			if form is None:
 				break
+			#print("REPROD:", str(form).rstrip())
 			interpreter.top_level_evaluate(form)
 
 

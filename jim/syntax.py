@@ -17,8 +17,7 @@ class Integer(Atom):
 	pass
 
 class Symbol(Atom):
-	def __str__(self):
-		return self.value
+	pass
 
 class String(Atom):
 	_str_escape = str.maketrans({
