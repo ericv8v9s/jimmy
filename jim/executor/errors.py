@@ -1,4 +1,5 @@
-import jim.interpreter
+import jim.executor.interpreter as interpreter
+
 
 #In calling
 #  1: (call 1)
@@ -13,7 +14,7 @@ import jim.interpreter
 class JimmyError(Exception):
 	def __init__(self, offending_form, msg):
 		super().__init__()
-		self.stackframes = list(jim.interpreter.iter_stack())
+		self.stackframes = list(interpreter.iter_stack())
 		self.offending_form = offending_form
 		self.msg = msg
 

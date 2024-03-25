@@ -1,8 +1,8 @@
 from contextlib import contextmanager
 
-import jim.builtins
-import jim.execution as jexec
-from jim.errors import *
+import jim.executor.builtins as jimlang
+import jim.executor.execution as jexec
+from .errors import *
 from jim.syntax import *
 
 
@@ -27,38 +27,38 @@ class Stackframe:
 def init_frame_builtins(frame):
 	frame.symbol_table.update({
 		# builtin core stuff
-		"nil"   : jim.builtins.nil,
+		"nil"   : jimlang.nil,
 		"true"  : True,
 		"false" : False,
-		"assert": jim.builtins.Assertion(),
-		"assign": jim.builtins.Assignment(),
-		"func"  : jim.builtins.Lambda(),
-		"progn" : jim.builtins.Progn(),
-		"cond"  : jim.builtins.Conditional(),
-		"while" : jim.builtins.WhileLoop(),
+		"assert": jimlang.Assertion(),
+		"assign": jimlang.Assignment(),
+		"func"  : jimlang.Lambda(),
+		"progn" : jimlang.Progn(),
+		"cond"  : jimlang.Conditional(),
+		"while" : jimlang.WhileLoop(),
 
 		# arithmetic
-		"+": jim.builtins.Addition(),
-		"-": jim.builtins.Subtraction(),
-		"*": jim.builtins.Multiplication(),
-		"/": jim.builtins.Division(),
-		"%": jim.builtins.Modulo(),
+		"+": jimlang.Addition(),
+		"-": jimlang.Subtraction(),
+		"*": jimlang.Multiplication(),
+		"/": jimlang.Division(),
+		"%": jimlang.Modulo(),
 
 		# tests
-		"="  : jim.builtins.Equality(),
-		"<"  : jim.builtins.LessThan(),
-		">"  : jim.builtins.GreaterThan(),
-		"<=" : jim.builtins.LessEqual(),
-		">=" : jim.builtins.GreaterEqual(),
-		"and": jim.builtins.Conjunction(),
-		"or" : jim.builtins.Disjunction(),
-		"not": jim.builtins.Negation(),
+		"="  : jimlang.Equality(),
+		"<"  : jimlang.LessThan(),
+		">"  : jimlang.GreaterThan(),
+		"<=" : jimlang.LessEqual(),
+		">=" : jimlang.GreaterEqual(),
+		"and": jimlang.Conjunction(),
+		"or" : jimlang.Disjunction(),
+		"not": jimlang.Negation(),
 
-		"print"   : jim.builtins.Print(),
-		"list"    : jim.builtins.List(),
-		"list-get": jim.builtins.ListGet(),
-		"list-set": jim.builtins.ListSet(),
-		"len"     : jim.builtins.Length()
+		"print"   : jimlang.Print(),
+		"list"    : jimlang.List(),
+		"list-get": jimlang.ListGet(),
+		"list-set": jimlang.ListSet(),
+		"len"     : jimlang.Length()
 	})
 
 
@@ -123,7 +123,7 @@ def evaluate(obj):
 
 		case CompoundForm(children=forms):
 			if len(forms) == 0:
-				return jim.builtins.nil
+				return jimlang.nil
 			return invoke(obj)
 
 		case CodeObject():
@@ -169,48 +169,3 @@ def invoke(compound):
 		return evaluate(result)
 	else:
 		return result
-
-
-
-def main(argv):
-	from jim import reader
-	import sys
-
-	match argv:
-		case []:  # interactive mode
-			while True:
-				print("IN: ", end="", flush=True)
-
-				try:
-					parsed = reader.parse(lambda: sys.stdin.read(1))
-				except reader.ParseError as e:
-					print(str(e), file=sys.stderr)
-					break
-
-				if parsed is None:
-					break
-
-				result = top_level_evaluate(parsed)
-				if result is not None:
-					print("OUT:", result, flush=True)
-
-		case [filename]:
-			if filename == "-":
-				f = sys.stdin
-			else:
-				f = open(filename)
-			with f:
-				while True:
-					try:
-						form = reader.parse(lambda: f.read(1))
-					except reader.ParseError as e:
-						print(str(e), file=sys.stderr)
-						break
-					if form is None:
-						break
-					#print("REPROD:", str(form).rstrip())
-					top_level_evaluate(form)
-
-		case _:
-			from jim import main
-			main.print_usage()
