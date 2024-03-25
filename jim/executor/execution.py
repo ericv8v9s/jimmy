@@ -1,5 +1,5 @@
-import jim.interpreter
-import jim.builtins
+import jim.executor.interpreter as interpreter
+import jim.executor.builtins as jimlang
 
 
 class Execution:
@@ -30,7 +30,7 @@ class JimmyFunction(Function):
 		self.code = code
 
 	def evaluate(self, stack_frame):
-		last = jim.builtins.nil
+		last = jimlang.nil
 		for form in self.code:
-			last = jim.interpreter.evaluate(form)
+			last = interpreter.evaluate(form)
 		return last

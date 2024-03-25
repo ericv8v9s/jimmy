@@ -3,6 +3,8 @@ from functools import wraps
 from dataclasses import dataclass
 from typing import Any
 
+from jim.syntax import *
+
 
 _SPACES = set(whitespace)
 _DIGITS = set(digits)
@@ -35,13 +37,16 @@ class ParseResult:
 
 def _component_parser(parse_function):
 	@wraps(parse_function)
-	def wrapper(get_next_char):
+	def component_parser_wrapper(char_source):
 		global _next_char
 		bookmark = _next_char
 
-		out = parse_function(get_next_char)
+		# parse logic:
+		out = parse_function(char_source)
+		#   if the parse function gave a manual adjustment, use that
 		if out.chars_consumed_adj is not None:
 			_next_char += out.chars_consumed_adj
+		#   otherwise, if parsing failed, drop back to bookmark
 		elif not out.success:
 			_next_char = bookmark
 
@@ -52,132 +57,151 @@ def _component_parser(parse_function):
 		#	print("failed")
 
 		return out
-
-	return wrapper
-
-
-def _make_get_next_char(char_src):
-	@wraps(char_src)
-	def get_next_char():
-		global _next_char
-		while _next_char >= len(_buffer):
-			_buffer.append(char_src())
-		out = _buffer[_next_char]
-		_next_char += 1
-		return out
-	return get_next_char
+	return component_parser_wrapper
 
 
-def parse(char_src):
-	get_next_char = _make_get_next_char(char_src)
+def _wrap_char_source(get_next_char):
+	"""
+	Wraps the character source function into a generator.
 
-	skip(get_next_char)
-	if _lookahead_eof(get_next_char).success:
+	The character source function should not raise errors for EOF,
+	and should instead return the empty string.
+	"""
+
+	def char_gen():
+		global _next_char, _line_num
+		while True:
+			while _next_char >= len(_buffer):
+				c = get_next_char()
+				if c == '\n':
+					_line_num += 1
+				_buffer.append(c)
+
+			out = _buffer[_next_char]
+			_next_char += 1
+			yield out
+	return char_gen()
+
+
+def _lookahead1(c):
+	@_component_parser
+	def lookahead(chars):
+		return ParseResult(next(chars) == c)
+	return lookahead
+
+
+def parse(get_next_char):
+	chars = _wrap_char_source(get_next_char)
+
+	skip_whitespace(chars)
+	if _lookahead1("")(chars).success:  # empty string indicates EOF
 		return None
 
-	return parse_form(get_next_char).result
+	return parse_form(chars).result
+
 
 @_component_parser
-def _lookahead_eof(get_next_char):
-	return ParseResult(get_next_char() == "")
-
-
-def skip(get_next_char):
-	skip_whitespace(get_next_char)
-	skip_comment(get_next_char)
-	skip_whitespace(get_next_char)
-
-@_component_parser
-def skip_whitespace(get_next_char):
-	while get_next_char() in _SPACES:
+def skip_whitespace(chars):
+	while next(chars) in _SPACES:
 		pass
 	return ParseResult(True, chars_consumed_adj=-1)
 
-@_component_parser
-def skip_comment(get_next_char):
-	if get_next_char() != ';':
-		return ParseResult(False)
-	while get_next_char() != '\n':
-		pass
-	return ParseResult(True)
-
 
 @_component_parser
-def parse_form(get_next_char):
+def parse_form(chars):
 	order = [
+		parse_comment,
 		parse_compound,
+		parse_proof_anno,
 		parse_string,
 		parse_integer,
 		parse_symbol]
 
-	skip(get_next_char)
+	skip_whitespace(chars)
 	for parse_function in order:
-		out = parse_function(get_next_char)
+		out = parse_function(chars)
 		if out.success:
-			# adjustment already applied by the parse_function
+			# adjustment already applied by wrapper
 			return ParseResult(True, out.result)
 
 	raise ParseError("Invalid form.")
 
 
 @_component_parser
-def parse_compound(get_next_char):
-	if get_next_char() != '(':
+def parse_compound(chars):
+	if next(chars) != '(':
 		return ParseResult(False)
-	elements = []
-	while not _lookahead_compound_close(get_next_char).success:
-		elements.append(parse_form(get_next_char).result)
-	return ParseResult(True, elements)
+	forms = []
+	while not _lookahead1(')')(chars).success:
+		forms.append(parse_form(chars).result)
+	return ParseResult(True, CompoundForm(forms))
 
 
 @_component_parser
-def _lookahead_compound_close(get_next_char):
-	return ParseResult(get_next_char() == ')')
+def parse_proof_anno(chars):
+	if next(chars) != '[':
+		return ParseResult(False)
+	forms = []
+	while not _lookahead1(']')(chars).success:
+		forms.append(parse_form(chars).result)
+	return ParseResult(True, ProofAnnotation(forms))
 
 
 @_component_parser
-def parse_integer(get_next_char):
+def parse_comment(chars):
+	if next(chars) != ';':
+		return ParseResult(False)
+	msg = []
+	for c in chars:
+		if c == '\n' or c == "":
+			break
+		msg.append(c)
+	return ParseResult(True, Comment("".join(msg)))
+
+
+@_component_parser
+def parse_integer(chars):
 	num_str = []
-	c = get_next_char()
+	c = next(chars)
 	if c == '+' or c == '-':
 		num_str.append(c)
-		c = get_next_char()
+		c = next(chars)
 
 	if c not in _DIGITS:
 		return ParseResult(False)
+	num_str.append(c)
 
-	while c in _DIGITS:
+	for c in chars:
+		if c not in _DIGITS:
+			break
 		num_str.append(c)
-		c = get_next_char()
-	return ParseResult(True, ("LIT", int("".join(num_str))), -1)
+	return ParseResult(True, Integer(int("".join(num_str))), -1)
 
 
 @_component_parser
-def parse_string(get_next_char):
-	if get_next_char() != '"':
+def parse_string(chars):
+	if next(chars) != '"':
 		return ParseResult(False)
 
 	s = []
-	c = get_next_char()
-	while c != '"':
-		if c == '//':
-			c = get_next_char()
-		if c == "":
+	for c in chars:
+		if c == '"':
+			break
+		if c == '//':  # escape
+			c = next(chars)
+		elif c == "":
 			raise ParseError("Unterminated string literal.")
 		s.append(c)
-		c = get_next_char()
-
-	return ParseResult(True, ("LIT", "".join(s)))
+	return ParseResult(True, String("".join(s)))
 
 
 @_component_parser
-def parse_symbol(get_next_char):
+def parse_symbol(chars):
 	s = []
-	c = get_next_char()
-	while c in _IDENT_CHARS:
+	for c in chars:
+		if c not in _IDENT_CHARS:
+			break
 		s.append(c)
-		c = get_next_char()
 	if len(s) > 0:
-		return ParseResult(True, ("SYM", "".join(s)), -1)
+		return ParseResult(True, Symbol("".join(s)), -1)
 	return ParseResult(False)
-

@@ -1,7 +1,7 @@
-import jim.execution as jexec
-import jim.interpreter as interpreter
-import jim.errors
-import jim.utils
+import jim.executor.execution as jexec
+import jim.executor.interpreter as interpreter
+import jim.executor.errors as errors
+from jim.syntax import *
 
 
 class Nil:
@@ -15,13 +15,13 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
-	return [("SYM", "progn")] + forms
+	return CompoundForm([Symbol("progn")] + forms)
 
 
 def _require_ints(values):
 	for n in values:
 		if not isinstance(n, int):
-			raise jim.errors.JimmyError(n, "Value is not an integer.")
+			raise errors.JimmyError(n, "Value is not an integer.")
 
 
 def product(values):  # just like the builtin sum
@@ -31,16 +31,24 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
+class Assertion(jexec.Function):
+	def __init__(self):
+		super().__init__(["expr"])
+	def evaluate(self, frame):
+		if not _truthy(frame["expr"]):
+			raise errors.AssertionError(frame["expr"])
+		return nil
+
 class Assignment(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
 
 	def evaluate(self, frame):
 		match frame["lhs"]:
-			case ("SYM", symbol):
+			case Symbol(value=symbol):
 				lhs = symbol
 			case _:
-				raise jim.errors.SyntaxError(
+				raise errors.SyntaxError(
 						frame["lhs"], "Assignment target is not a variable.")
 
 		with interpreter.switch_stack(frame.last_frame) as f:
@@ -61,12 +69,12 @@ class Lambda(jexec.Execution):
 		param_spec = []
 		for p in param_spec_raw:
 			match p:
-				case ("SYM", symbol):  # positional
+				case Symbol(value=symbol):  # positional
 					param_spec.append(symbol)
-				case [("SYM", symbol)]:  # rest
+				case CompoundForm(children=[Symbol(value=symbol)]):  # rest
 					param_spec.append([symbol])
 				case _:
-					raise jim.errors.SyntaxError(
+					raise errors.SyntaxError(
 							param_spec_raw, "The parameter specification is invalid.")
 		return jexec.JimmyFunction(param_spec, frame["body"])
 
@@ -94,12 +102,12 @@ class Conditional(jexec.Macro):
 	def evaluate(self, frame):
 		for b in frame["branches"]:
 			match b:
-				case (test, *body):
+				case CompoundForm(children=[test, *body]):
 					with interpreter.switch_stack(frame.last_frame):
 						if _truthy(interpreter.evaluate(test)):
 							return _wrap_progn(body)
 				case _:
-					raise jim.errors.SyntaxError(b, "Invalid conditional branch.")
+					raise errors.SyntaxError(b, "Invalid conditional branch.")
 		return nil
 
 
@@ -160,7 +168,7 @@ class Division(jexec.Function):
 				return 1 // n
 			return n // product(terms)
 		except ZeroDivisionError:
-			raise jim.errors.DivideByZeroError(frame.call_form)
+			raise errors.DivideByZeroError(frame.call_form)
 
 
 class Modulo(jexec.Function):
@@ -170,7 +178,7 @@ class Modulo(jexec.Function):
 		x, y = frame["x"], frame["y"]
 		_require_ints([x, y])
 		if y == 0:
-			raise jim.errors.DivideByZeroError(frame.call_form)
+			raise errors.DivideByZeroError(frame.call_form)
 		return x % y
 
 
@@ -261,11 +269,7 @@ class Print(jexec.Function):
 	def __init__(self):
 		super().__init__(["msg"])
 	def evaluate(self, frame):
-		msg = frame["msg"]
-		if isinstance(msg, str):
-			print(msg)
-		else:
-			print(jim.utils.form_to_str(msg))
+		print(frame["msg"])
 		return nil
 
 
@@ -281,7 +285,7 @@ class ListGet(jexec.Function):
 	def evaluate(self, frame):
 		lst, idx = frame["lst"], frame["idx"]
 		if not (0 <= idx < len(lst)):
-			raise jim.errors.IndexError(frame.call_form)
+			raise errors.IndexError(frame.call_form)
 		return lst[idx]
 
 class ListSet(jexec.Function):
@@ -290,7 +294,7 @@ class ListSet(jexec.Function):
 	def evaluate(self, frame):
 		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
 		if not (0 <= idx < len(lst)):
-			raise jim.errors.IndexError(frame.call_form)
+			raise errors.IndexError(frame.call_form)
 		lst[idx] = val
 		return val
 
@@ -302,5 +306,5 @@ class Length(jexec.Function):
 		try:
 			return len(frame["sequence"])
 		except TypeError:
-			raise jim.errors.JimmyError(
+			raise errors.JimmyError(
 				frame.call_form, "Object has no concept of length.")

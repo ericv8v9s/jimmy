@@ -1,0 +1,13 @@
+; INPUT
+(assign x 7)
+(assign y 2)
+
+(assign r x)
+(assign q 0)
+(while (<= y r)
+	(assign r (- r y))
+	(assign q (+ q 1)))
+
+; OUTPUT
+(print q)
+(print r)
