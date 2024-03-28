@@ -8,23 +8,27 @@ from jim.syntax import *
 
 # Like stack frames.
 # Each proof has its proof level,
-# and sub-proofs on top gets a new proof level on top of the previous.
+# and each sub-proof gets a new proof level on top of the previous.
 class ProofLevel:
-	def __init__(self, last_frame, call_form):
-		self.last_frame = last_frame
-		self.call_form = call_form
-		self.symbol_table = dict()
+	def __init__(self, previous_level):
+		self.previous = previous_level
+		self.results = []
+		self.named_results = dict()
+		self.last_result = None
+		self.last_form = None
+		self.current_proof_line = None
 
-	def lookup(self, symbol):
+	def lookup(self, name):
+		"""Looks up a named result."""
 		try:
-			return self.symbol_table[symbol]
-		except KeyError as e:
-			if self.last_frame is not None:
-				return self.last_frame.lookup(symbol)
-			raise UndefinedVariableError(symbol) from e
+			return self.named_results[name]
+		except KeyError:
+			if self.previous is not None:
+				return self.previous.lookup(name)
+			raise
 
 	def __getitem__(self, key):
-		return self.symbol_table[key]
+		return self.known_formulas[key]
 
 
 def init_frame_builtins(frame):
@@ -105,10 +109,12 @@ def switch_stack(new_top_frame):
 
 def top_level_evaluate(form):
 	try:
-		return evaluate(form)
-	except JimmyError as e:
+		evaluate(form)
+		return True
+	except ProofError as e:
 		import sys
 		print(format_error(e), file=sys.stderr)
+		return False
 
 
 def evaluate(obj):

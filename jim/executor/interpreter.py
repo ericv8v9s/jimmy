@@ -25,42 +25,7 @@ class Stackframe:
 
 
 def init_frame_builtins(frame):
-	frame.symbol_table.update({
-		# builtin core stuff
-		"nil"   : jimlang.nil,
-		"true"  : True,
-		"false" : False,
-		"assert": jimlang.Assertion(),
-		"assign": jimlang.Assignment(),
-		"func"  : jimlang.Lambda(),
-		"progn" : jimlang.Progn(),
-		"cond"  : jimlang.Conditional(),
-		"while" : jimlang.WhileLoop(),
-
-		# arithmetic
-		"+": jimlang.Addition(),
-		"-": jimlang.Subtraction(),
-		"*": jimlang.Multiplication(),
-		"/": jimlang.Division(),
-		"%": jimlang.Modulo(),
-
-		# tests
-		"="  : jimlang.Equality(),
-		"<"  : jimlang.LessThan(),
-		">"  : jimlang.GreaterThan(),
-		"<=" : jimlang.LessEqual(),
-		">=" : jimlang.GreaterEqual(),
-		"and": jimlang.Conjunction(),
-		"or" : jimlang.Disjunction(),
-		"not": jimlang.Negation(),
-
-		"print"   : jimlang.Print(),
-		"list"    : jimlang.List(),
-		"list-get": jimlang.ListGet(),
-		"list-set": jimlang.ListSet(),
-		"len"     : jimlang.Length()
-	})
-
+	frame.symbol_table.update(jimlang.symbol_table)
 
 top_frame = Stackframe(None, "base frame")
 init_frame_builtins(top_frame)
@@ -140,29 +105,20 @@ def invoke(compound):
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError(form, "Invocation target is invalid.")
+		raise JimmyError(compound, "Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
 		argv = [evaluate(arg) for arg in argv]
 
 	#print(f"DEBUG: invoke: ({execution} {argv})")
 
-	params = dict()  # collects arguments to match up with parameters
-	argv_idx = 0
-
-	for p in execution.parameter_spec:
-		if isinstance(p, str):  # positional
-			if argv_idx < len(argv):
-				params[p] = argv[argv_idx]
-				argv_idx += 1
-			else:
-				raise ArgumentMismatchError(form)
-		elif isinstance(p, list):  # rest
-			params[p[0]] = argv[argv_idx:]
-			argv_idx += len(params[p[0]])
+	try:
+		matched_params = jexec.fill_parameters(execution.parameter_spec, argv)
+	except jexec.ArgumentMismatchError:
+		raise ArgumentMismatchError(compound) from None
 
 	with push_new_frame(compound) as f:
-		f.symbol_table.update(params)
+		f.symbol_table.update(matched_params)
 		result = execution.evaluate(f)
 
 	if isinstance(execution, jexec.EvaluateOut):
