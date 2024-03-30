@@ -21,7 +21,7 @@ def symbol_table_entry(name):
 class Nil:
 	def __str__(self):
 		return "nil"
-nil = Nil()
+nil = symbol_table["nil"]
 
 
 def _truthy(v):
@@ -29,7 +29,7 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
-	return CompoundForm([Symbol("progn")] + forms)
+	return CompoundForm([Symbol("progn"), *forms])
 
 
 def _require_ints(values):

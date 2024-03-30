@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import jim.executor.builtins as jimlang
 import jim.executor.execution as jexec
@@ -7,28 +8,29 @@ from jim.syntax import *
 
 
 # Like stack frames.
-# Each proof has its proof level,
+# Each proof exists in a proof level,
 # and each sub-proof gets a new proof level on top of the previous.
 class ProofLevel:
+	@dataclass
+	class Result:
+		formula: Form
+		name: str = None
+		assumed: bool = False  # does this matter?
+
 	def __init__(self, previous_level):
 		self.previous = previous_level
-		self.results = []
-		self.named_results = dict()
-		self.last_result = None
+		self.results: list[Result] = []
 		self.last_form = None
-		self.current_proof_line = None
+		self.current_line = None
 
 	def lookup(self, name):
 		"""Looks up a named result."""
-		try:
-			return self.named_results[name]
-		except KeyError:
-			if self.previous is not None:
-				return self.previous.lookup(name)
-			raise
-
-	def __getitem__(self, key):
-		return self.known_formulas[key]
+		for result in reversed(results):
+			if result.name == name:
+				return result.formula
+		if self.previous is not None:
+			return self.previous.lookup(name)
+		raise ProofError(f"No result of name '{name}'.")
 
 
 def init_frame_builtins(frame):

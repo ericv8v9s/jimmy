@@ -1,95 +1,60 @@
-#import jim.executor.execution as jexec
-#import jim.executor.interpreter as interpreter
-#import jim.executor.errors as errors
 from functools import wraps
 from jim.syntax import *
 from jim.checker.errors import *
-from jim.executor.builtins import symbol_table as executor_symbols
+import jim.executor.builtins as executor
 from jim.executor.execution import fill_parameters, ArgumentMismatchError
-
-
-#class Nil:
-#	def __str__(self):
-#		return "nil"
-#nil = Nil()
-#
-#
-#def _truthy(v):
-#	return v is not False
-#
-#
-#def _wrap_progn(forms):
-#	return CompoundForm([Symbol("progn")] + forms)
-#
-#
-#def _require_ints(values):
-#	for n in values:
-#		if not isinstance(n, int):
-#			raise errors.JimmyError(n, "Value is not an integer.")
-#
-#
-#def product(values):  # just like the builtin sum
-#	prod = 1
-#	for n in values:
-#		prod *= n
-#	return prod
 
 
 rules = dict()
 
-_SAME_NAMED = type('', (), {})  # dummy singleton
+_ANY_FORM = object()
+_SAME_NAMED = object()
 def rule_of_inference(name, following=_SAME_NAMED):
-	"""
-	Decorator that adds the rule to the rules dictionary and adds checks
-	against the last form.
-	"""
-	def reg_rule(func):
 
+	def reg_rule(func):
+		if following is _ANY_FORM:
+			rules[name] = func
+			return func
+
+		if following is _SAME_NAMED:
+			following = executor.symbol_table[name]
+
+		# otherwise, rule can only apply following the correct form
 		@wraps(func)
 		def wrap(proof_level, proposition):
-			if following is _SAME_NAMED:
-				following = name
-			if _check_rule_form_match(name, following, proof_level.last_form):
+			if _check_rule_form_match(following, proof_level.last_form):
 				return func(proof_level, proposition)
 			else:
 				raise RuleFormMismatchError(
-						proof_level.current_proof_line, name, proof_level.last_form)
-
+						proof_level.current_line, name, proof_level.last_form)
 		rules[name] = wrap
 		return wrap
 	return reg_rule
 
 
-def _check_rule_form_match(rule_name, expected, form):
+def _check_rule_form_match(expected, form):
 	if expected is None and form is None:
 		return True
 	match form:
 		case CompoundForm(children=(Symbol(value=head), *rest)):
-			if expected != head:
+			if executor.symbol_table[head] is not expected:
 				return False
 			try:
 				# We don't care about the result.
-				# We just want to check that this doesn't fail.
-				fill_parameters(executor_symbols[head].parameter_spec, rest)
+				# We just want to check that parameters can be filled.
+				fill_parameters(expected.parameter_spec, rest)
 				return True
-			except KeyError | ArgumentMismatchError:
+			except ArgumentMismatchError:
 				return False
 		case _:
 			return False
 
 
-class Assertion(jexec.Function):
-	def __init__(self):
-		super().__init__(["expr"])
-	def evaluate(self, frame):
-		if not _truthy(frame["expr"]):
-			raise errors.AssertionError(frame["expr"])
-		return nil
-
 @rule_of_inference("assert")
 def assertion(pl, prop):
-	# at this point, last_form has been checked to be a valid assert form
-	...
+	pl.results.append(prop)
+	assert pl.last_form[1] == prop  # TODO raise ProofError
+	return ... # what to return?
 
 
 class Assignment(jexec.Execution):

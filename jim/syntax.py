@@ -1,3 +1,6 @@
+from abc import ABC, abstractmethod
+
+
 class ValueMixin:
 	def __init__(self, value, *args, **kws):
 		self.value = value
@@ -9,11 +12,17 @@ class ValueMixin:
 	def __hash__(self):
 		return hash(self.value)
 
+	def __eq__(self, other):
+		return type(self) is type(other) and self.value == other.value
+
 
 class CompoundMixin:
 	def __init__(self, children, *args, **kws):
 		self.children = tuple(children)
 		super().__init__(*args, **kws)
+
+	def __iter__(self):
+		return iter(self.children)
 
 	def __getitem__(self, key):
 		return self.children[key]
@@ -21,9 +30,19 @@ class CompoundMixin:
 	def __hash__(self):
 		return hash(self.children)
 
+	def __eq__(self, other):
+		return type(self) is type(other) and self.children == other.children
 
-class CodeObject:
-	pass
+
+class CodeObject(ABC):
+	@abstractmethod
+	def __hash__(self):
+		pass
+
+	@abstractmethod
+	def __eq__(self):
+		pass
+
 
 class Form(CodeObject):
 	pass
