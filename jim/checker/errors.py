@@ -1,19 +1,29 @@
+import jim.checker.interpreter as checker
+
+
 class ProofError(Exception):
-	def __init__(self, proof_line, msg):
+	def __init__(self, msg):
 		super().__init__()
-		self.proof_line = proof_line
 		self.msg = msg
+		self.proof_line = checker.top_frame.current_line
 
 
 class UnknownNamedResultError(ProofError):
-	def __init__(self, proof_line, name):
-		super().__init__(proof_line, f"'{name}' does not name a known result.")
+	def __init__(self, name):
+		super().__init__(f"'{name}' does not name a known result.")
 
 
 class RuleFormMismatchError(ProofError):
-	def __init__(self, proof_line, rule_name, form):
+	def __init__(self, rule_name, form):
 		super().__init__(
-				proof_line, f"Rule '{rule_name}' cannot by applied to {form}")
+				f"Rule '{rule_name}' cannot by applied to {form}.")
+
+
+class ArgumentMismatchError(ProofError):
+	def __init__(self, execution, argv):
+		super().__init__(
+				f"{execution} does not accept arguments: "
+				f"{', '.join(map(str, argv))}.")
 
 
 class SyntaxError(ProofError): pass

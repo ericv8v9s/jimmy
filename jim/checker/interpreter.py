@@ -1,8 +1,9 @@
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 
 import jim.executor.builtins as jimlang
-import jim.executor.execution as jexec
+import jim.checker.execution as jexec
 from .errors import *
 from jim.syntax import *
 
@@ -15,7 +16,7 @@ class ProofLevel:
 	class Result:
 		formula: Form
 		name: str = None
-		assumed: bool = False  # does this matter?
+		assumed: bool = False  # prbly necessary if we add quantifiers
 
 	def __init__(self, previous_level):
 		self.previous = previous_level
@@ -30,56 +31,10 @@ class ProofLevel:
 				return result.formula
 		if self.previous is not None:
 			return self.previous.lookup(name)
-		raise ProofError(f"No result of name '{name}'.")
+		raise UnknownNamedResultError(name)
 
 
-def init_frame_builtins(frame):
-	frame.symbol_table.update({
-		# builtin core stuff
-		"nil"   : jimlang.nil,
-		"true"  : True,
-		"false" : False,
-		"assert": jimlang.Assertion(),
-		"assign": jimlang.Assignment(),
-		"func"  : jimlang.Lambda(),
-		"progn" : jimlang.Progn(),
-		"cond"  : jimlang.Conditional(),
-		"while" : jimlang.WhileLoop(),
-
-		# arithmetic
-		"+": jimlang.Addition(),
-		"-": jimlang.Subtraction(),
-		"*": jimlang.Multiplication(),
-		"/": jimlang.Division(),
-		"%": jimlang.Modulo(),
-
-		# tests
-		"="  : jimlang.Equality(),
-		"<"  : jimlang.LessThan(),
-		">"  : jimlang.GreaterThan(),
-		"<=" : jimlang.LessEqual(),
-		">=" : jimlang.GreaterEqual(),
-		"and": jimlang.Conjunction(),
-		"or" : jimlang.Disjunction(),
-		"not": jimlang.Negation(),
-
-		"print"   : jimlang.Print(),
-		"list"    : jimlang.List(),
-		"list-get": jimlang.ListGet(),
-		"list-set": jimlang.ListSet(),
-		"len"     : jimlang.Length()
-	})
-
-
-top_frame = Stackframe(None, "base frame")
-init_frame_builtins(top_frame)
-
-
-def iter_stack():
-	f = top_frame
-	while f is not None:
-		yield f
-		f = f.last_frame
+top_frame = ProofLevel(None)
 
 
 @contextmanager
@@ -111,7 +66,7 @@ def switch_stack(new_top_frame):
 
 def top_level_evaluate(form):
 	try:
-		evaluate(form)
+		evaluate(form, ignore_compound=True)
 		return True
 	except ProofError as e:
 		import sys
@@ -119,12 +74,20 @@ def top_level_evaluate(form):
 		return False
 
 
-def evaluate(obj):
-	"""Computes a value for the form parsed by reader."""
-
+def evaluate(obj, ignore_compound):
 	#print(f"DEBUG: evaluate( {obj} )")
 
 	match obj:
+		case ProofAnnotation(children=forms):
+			if len(forms) == 0:
+				return None
+			return invoke(obj)
+
+		case CompoundForm(children=forms) if not ignore_compound:
+			if len(forms) == 0:
+				return jimlang.nil
+			return invoke(obj)
+
 		case Integer(value=v):
 			return v
 		case Symbol(value=name):
@@ -132,13 +95,7 @@ def evaluate(obj):
 		case String(value=s):
 			return s
 
-		case CompoundForm(children=forms):
-			if len(forms) == 0:
-				return jimlang.nil
-			return invoke(obj)
-
 		case CodeObject():
-			# comments and proof annotations are noops
 			return None
 
 		case _:
@@ -147,14 +104,16 @@ def evaluate(obj):
 
 
 def invoke(compound):
-	execution = evaluate(compound[0])
+	eval_also_compound = partial(evaluate, ignore_compound=False)
+
+	execution = eval_also_compound(compound[0])
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError(form, "Invocation target is invalid.")
+		raise ProofError("Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
-		argv = [evaluate(arg) for arg in argv]
+		argv = [eval_also_compound(arg) for arg in argv]
 
 	#print(f"DEBUG: invoke: ({execution} {argv})")
 
@@ -167,16 +126,14 @@ def invoke(compound):
 				params[p] = argv[argv_idx]
 				argv_idx += 1
 			else:
-				raise ArgumentMismatchError(form)
+				raise ArgumentMismatchError(compound[0], argv)
 		elif isinstance(p, list):  # rest
 			params[p[0]] = argv[argv_idx:]
 			argv_idx += len(params[p[0]])
 
-	with push_new_frame(compound) as f:
-		f.symbol_table.update(params)
-		result = execution.evaluate(f)
+	result = execution.evaluate(top_frame, params)
 
 	if isinstance(execution, jexec.EvaluateOut):
-		return evaluate(result)
+		return eval_also_compound(result)
 	else:
 		return result
