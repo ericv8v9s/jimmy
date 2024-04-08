@@ -3,7 +3,7 @@ from functools import wraps
 from dataclasses import dataclass
 from typing import Any
 
-from jim.syntax import *
+from jim.ast import *
 
 
 _SPACES = set(whitespace)

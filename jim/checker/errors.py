@@ -1,36 +1,59 @@
-import jim.checker.interpreter as checker
+import jim.checker.interpreter as interpreter
+import jim.ast
 
 
-class ProofError(Exception):
-	def __init__(self, msg):
+class JimmyError(Exception):
+	def __init__(self, offending_form, msg):
 		super().__init__()
+		self.stackframes = list(interpreter.iter_stack())
+		self.offending_form = offending_form
 		self.msg = msg
-		self.proof_line = checker.top_frame.current_line
 
+class UndefinedVariableError(JimmyError):
+	def __init__(self, symbol, msg="Variable is undefined."):
+		super().__init__(symbol, msg)
 
-class UnknownNamedResultError(ProofError):
+class DivideByZeroError(JimmyError):
+	def __init__(self, offending_form, msg="Cannot divide by zero."):
+		super().__init__(offending_form, msg)
+
+class ArgumentMismatchError(JimmyError):
+	def __init__(self, offending_form, msg="Arguments do not match the parameters."):
+		super().__init__(offending_form, msg)
+
+class IndexError(JimmyError):
+	def __init__(self, offending_form, msg="List index is out of bounds."):
+		super().__init__(offending_form, msg)
+
+class AssertionError(JimmyError):
+	def __init__(self, offending_form, msg="Assertion not satisfied."):
+		super().__init__(offending_form, msg)
+
+class SyntaxError(JimmyError): pass
+
+class UnknownNamedResultError(JimmyError):
 	def __init__(self, name):
-		super().__init__(f"'{name}' does not name a known result.")
-
-
-class RuleFormMismatchError(ProofError):
-	def __init__(self, rule_name, form):
 		super().__init__(
-				f"Rule '{rule_name}' cannot by applied to {form}.")
+			jim.ast.Symbol(name), "Symbol does not name a previous result.")
 
+class RuleFormMismatchError(JimmyError):
+	def __init__(self, form, last_form):
+		super().__init__(form, f"Cannot apply rule to form: {last_form}")
 
-class ArgumentMismatchError(ProofError):
-	def __init__(self, execution, argv):
-		super().__init__(
-				f"{execution} does not accept arguments: "
-				f"{', '.join(map(str, argv))}.")
-
-
-class SyntaxError(ProofError): pass
+class InvalidRuleApplicationError(JimmyError):
+	def __init__(self, form, msg="Failed to produce the specified formula."):
+		super().__init__(form, msg)
 
 
 def format_error(e):
-	return (
-			 "The following proof line failed to validate\n"
-			f"  {e.proof_line}\n"
-			f"{e.msg}")
+	result = "In calling\n"
+	for i, f in enumerate(reversed(e.stackframes)):
+		result += f"  {i}: {f.call_form}\n"
+
+	result += (
+			"The evaluation of\n"
+			f"  {e.offending_form}\n"
+			"Failed because\n"
+			f"  {e.msg}")
+
+	return result

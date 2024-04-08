@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import jim.executor.builtins as jimlang
 import jim.executor.execution as jexec
 from .errors import *
-from jim.syntax import *
+from jim.ast import *
 
 
 class Stackframe:

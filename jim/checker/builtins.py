@@ -1,113 +1,127 @@
 from functools import wraps
-from jim.syntax import *
+from jim.ast import *
+import jim.grammar as grammar
 from jim.checker.errors import *
-import jim.executor.builtins as executor
-from jim.executor.execution import fill_parameters, ArgumentMismatchError
+from jim.checker.execution import Execution
+import jim.checker.interpreter as interpreter
 
 
-rules = dict()
+symbol_table = dict()
+
+
+class _InferenceRule(Execution):
+	def __init__(self, validation_func):
+		super().__init__(["_"])
+		self.validation_func = validation_func
+
+	def evaluate(self, frame):
+		with interpreter.switch_stack(frame.last_frame) as f:
+			valid = self.validation_func(f, frame["_"])
+			if not valid:
+				raise InvalidRuleApplicationError(frame.call_form)
+			frame.proof_level.add_result(frame["_"])
+
 
 _ANY_FORM = object()
-_SAME_NAMED = object()
-def rule_of_inference(name, following=_SAME_NAMED):
-
+def rule_of_inference(name, following=_ANY_FORM):
+	"""
+	Decorates a function to become a rule of inference.
+	The function should accept a Stackframe object and an ast object,
+	and return a boolean to indicate successful or failed application.
+	"""
 	def reg_rule(func):
 		if following is _ANY_FORM:
-			rules[name] = func
-			return func
-
-		if following is _SAME_NAMED:
-			following = executor.symbol_table[name]
+			symbol_table[name] = _InferenceRule(func)
+			return symbol_table[name]
 
 		# otherwise, rule can only apply following the correct form
 		@wraps(func)
-		def wrap(proof_level, proposition):
-			if _check_rule_form_match(following, proof_level.last_form):
-				return func(proof_level, proposition)
+		def wrap(frame, proposition):
+			if following.check(frame.proof_level.last_form):
+				return func(frame, proposition)
 			else:
 				raise RuleFormMismatchError(
-						proof_level.current_line, name, proof_level.last_form)
-		rules[name] = wrap
-		return wrap
+						frame.call_form, frame.proof_level.last_form)
+		symbol_table[name] = _InferenceRule(wrap)
+		return symbol_table[name]
 	return reg_rule
 
 
-def _check_rule_form_match(expected, form):
-	if expected is None and form is None:
-		return True
-	match form:
-		case CompoundForm(children=(Symbol(value=head), *rest)):
-			if executor.symbol_table[head] is not expected:
-				return False
-			try:
-				# We don't care about the result.
-				# We just want to check that parameters can be filled.
-				fill_parameters(expected.parameter_spec, rest)
-				return True
-			except ArgumentMismatchError:
-				return False
-		case _:
-			return False
+@rule_of_inference("assert", following=grammar.assertion)
+def assertion(frame, ast):
+	return frame.proof_level.last_form[1] == ast
 
 
-@rule_of_inference("assert")
-def assertion(pl, prop):
-	pl.results.append(prop)
-	assert pl.last_form[1] == prop  # TODO raise ProofError
-	return ... # what to return?
+def _substitute(a, b, tree):
+	"""
+	Substitutes all occurrences of a to b in tree,
+	where a and b can by any form (compound form would substitute a sub-tree).
+	"""
+	if tree == a:
+		return b
+	try:
+		return CompoundForm([_substitute(a, b, n) for n in tree])
+	except TypeError:  # it's a leaf
+		return tree
 
 
-class Assignment(jexec.Execution):
+# Substitution is a "meta-rule".
+# The result of form (sub (= a b) y) is a rule that
+# replaces all appearances of a to b in y.
+class Substitution(Execution):
+	# check for (= a b)
+	equality_grammar = grammar.compound(
+			grammar.symbol("="), grammar.form, grammar.form)
+
 	def __init__(self):
-		super().__init__(["lhs", "rhs"])
+		super().__init__(["equality", "origin"])
 
 	def evaluate(self, frame):
-		match frame["lhs"]:
-			case Symbol(value=symbol):
-				lhs = symbol
-			case _:
-				raise errors.SyntaxError(
-						frame["lhs"], "Assignment target is not a variable.")
+		equality, origin = frame["equality"], frame["origin"]
+		if not Substitution.equality_grammar.check(equality):
+			raise JimmyError(equality, "Form must be a two-term equality.")
 
-		with interpreter.switch_stack(frame.last_frame) as f:
-			rhs = interpreter.evaluate(frame["rhs"])
-			f.symbol_table[lhs] = rhs
+		a, b = equality[1], equality[2]
+		expected = _substitute(a, b, origin)
+		return _InferenceRule(lambda f, ast: expected == ast)()
 
-		return rhs
+symbol_table["sub"] = Substitution()
 
 
-# This is the lambda form.
-# There is no defun form. A defun is (assign xxx (func ...))
-class Lambda(jexec.Execution):
-	def __init__(self):
-		super().__init__(["param_spec", ["body"]])
+@rule_of_inference("assign", following=grammar.assignment)
+def assignment(frame, ast):
+	last_form = frame.proof_level.last_form
+	lhs, rhs = last_form[1], last_form[2]
 
-	def evaluate(self, frame):
-		param_spec_raw = frame["param_spec"]
-		param_spec = []
-		for p in param_spec_raw:
-			match p:
-				case Symbol(value=symbol):  # positional
-					param_spec.append(symbol)
-				case CompoundForm(children=[Symbol(value=symbol)]):  # rest
-					param_spec.append([symbol])
-				case _:
-					raise errors.SyntaxError(
-							param_spec_raw, "The parameter specification is invalid.")
-		return jexec.JimmyFunction(param_spec, frame["body"])
+	# Application is valid if the substitution result was already proven.
+	target = _substitute(lhs, rhs, ast)
+	level = frame.proof_level
+	while level is not None:
+		for result in level.results:
+			if target == result.formula:
+				break
+		level = level.previous
+	else:
+		# All results from all levels checked; no match.
+		return False
+
+	# Assignment must also invalidate all previous results
+	# that involve the symbol being assigned to.
+	level = frame.proof_level
+	while level is not None:
+		level.results = [r for r in level.results if lhs not in r.formula]
+		level = level.previous
+
+	return True
 
 
-class Progn(jexec.Execution):
-	def __init__(self):
-		super().__init__([["forms"]])
+# TODO progn rule?
 
-	def evaluate(self, frame):
-		body = frame["forms"]
-		result = nil
-		with interpreter.switch_stack(frame.last_frame):
-			for form in body:
-				result = interpreter.evaluate(form)
-		return result
+
+@rule_of_inference("cond", following=grammar.conditional)
+def conditional(frame, ast):
+	# TODO
+	raise NotImplementedError
 
 
 class Conditional(jexec.Macro):
@@ -127,6 +141,19 @@ class Conditional(jexec.Macro):
 				case _:
 					raise errors.SyntaxError(b, "Invalid conditional branch.")
 		return nil
+
+
+@rule_of_inference("while", following=grammar.while_loop)
+def while_loop(frame, ast):
+	while_form = frame.proof_level.last_form
+	loop_cond = while_form[1]
+
+	with interpreter.push_new_proof_level() as pl:
+		pl.add_result(loop_cond, assumed=True)
+		for form in while_form.children[2:]:
+			interpreter.evaluate(form)
+		# TODO check last result for the invariant
+	return expected == ast
 
 
 class WhileLoop(jexec.Execution):
@@ -330,3 +357,33 @@ class Length(jexec.Function):
 		except TypeError:
 			raise errors.JimmyError(
 				frame.call_form, "Object has no concept of length.")
+
+
+def _preorder_walk(tree, visitor=lambda x: x, leaves_only=False):
+	"""
+	Walks the tree in pre-order and visits each node using the visitor.
+	The tree should be structured as nested iterables.
+	"""
+
+	stack = []
+
+	try:
+		stack.append(iter(tree))
+		if not leaves_only:
+			yield visitor(tree)
+	except TypeError:
+		yield visitor(tree)
+
+	while len(stack) > 0:
+		try:
+			n = next(stack[-1])
+		except StopIteration:
+			stack.pop()
+			continue
+
+		try:
+			stack.append(iter(n))
+			if not leaves_only:
+				yield visitor(n)
+		except TypeError:
+			yield visitor(n)

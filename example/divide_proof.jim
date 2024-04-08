@@ -28,7 +28,7 @@
 ; every formula involving q not explicitly shown is invalidated
 [(sub (= 0 q) xr4) (= x (+ r (* y q)))]  [mark invar]  ; loop invariant
 
-(while (<= y r)  [assume (<= y r)]  ; not used; required by form
+(while (<= y r)  ;  [assume (<= y r)]  ; not used; required by form
 	; begins sub-proof
 	; TODO find a way to derive this
 	[(= x (+ (- r y) y (* y q)))]

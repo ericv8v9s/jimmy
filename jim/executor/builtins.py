@@ -1,7 +1,7 @@
 import jim.executor.execution as jexec
 import jim.executor.interpreter as interpreter
 import jim.executor.errors as errors
-from jim.syntax import *
+from jim.ast import *
 
 
 # TODO make this immutable (outside this module)

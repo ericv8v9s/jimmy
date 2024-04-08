@@ -53,3 +53,4 @@ def fill_parameters(parameter_spec, arguments):
 		elif isinstance(p, list):  # rest
 			params[p[0]] = arguments[arg_idx:]
 			arg_idx += len(params[p[0]])
+	return params
