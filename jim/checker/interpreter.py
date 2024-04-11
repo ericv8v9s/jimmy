@@ -35,9 +35,6 @@ class Stackframe:
 	def __getitem__(self, key):
 		return self.symbol_table[key]
 
-	def lookup_result(self, name):
-		return self.proof_level.lookup(name)
-
 
 def init_frame_builtins(frame):
 	frame.symbol_table.update(jbuiltins.symbol_table)
@@ -94,14 +91,23 @@ class ProofLevel:
 		self.results: list[Result] = []
 		self.last_form = None
 
-	def lookup(self, name):
-		"""Looks up a named result."""
-		for result in reversed(self.results):
-			if result.name == name:
-				return result.formula
+	def lookup(self, key, to_key):
+		"""
+		Checks all previous results mapped by to_key for equality against key.
+		"""
+		for result in map(to_key, reversed(self.results)):
+			if key == result:
+				return result
 		if self.previous is not None:
-			return self.previous.lookup(name)
-		raise UnknownNamedResultError(name)
+			return self.previous.lookup(key, to_key)
+		raise KeyError
+
+	def lookup_name(self, name):
+		"""Looks up a named result."""
+		try:
+			return self.lookup(name, lambda r: r.name)
+		except KeyError:
+			raise UnknownNamedResultError(name) from None
 
 	def add_result(self, validated_form, assumed=False):
 		result = ProofLevel.Result(validated_form, assumed=assumed)
@@ -133,7 +139,7 @@ def top_level_evaluate(form):
 		print(format_error(e), file=sys.stderr)
 
 
-def evaluate(obj, ignore_compound=True):
+def evaluate(obj):
 	#print(f"DEBUG: evaluate( {obj} )")
 
 	match obj:
@@ -149,39 +155,25 @@ def evaluate(obj, ignore_compound=True):
 				return True
 			return invoke(obj)
 
-		# special case for progn, always evaluated
 		case CompoundForm(children=[Symbol(value="progn"), *body]):
+		# Special case for progn, always evaluated.
 			for form in body:
 				evaluate(form)
 
-		case CompoundForm(children=forms) if not ignore_compound:
-			if len(forms) == 0:
-				return jimlang.nil
-			return invoke(obj)
-
-		case CodeObject():
-			return None
-
 		case _:
-			# consider it to be a raw object already evaluated
+			# Consider it to be a raw object already evaluated (or AST as is).
 			return obj
 
 
 def invoke(compound):
-	# We are calling something.
-	# This only possible if we are invoking a proof annotation as a call form
-	# or a compound form within a proof annotation.
-	# In either case, further compound forms should also be evaluated.
-	eval_also_compound = partial(evaluate, ignore_compound=False)
-
-	execution = eval_also_compound(compound[0])
+	execution = evaluate(compound[0])
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
 		raise ProofError("Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
-		argv = [eval_also_compound(arg) for arg in argv]
+		argv = [evaluate(arg) for arg in argv]
 
 	#print(f"DEBUG: invoke: ({execution} {argv})")
 

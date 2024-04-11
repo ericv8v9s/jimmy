@@ -17,6 +17,7 @@ class _InferenceRule(Execution):
 	def evaluate(self, frame):
 		with interpreter.switch_stack(frame.last_frame) as f:
 			valid = self.validation_func(f, frame["_"])
+			assert isinstance(valid, bool)
 			if not valid:
 				raise InvalidRuleApplicationError(frame.call_form)
 			frame.proof_level.add_result(frame["_"])
@@ -61,12 +62,12 @@ def _substitute(a, b, tree):
 		return b
 	try:
 		return CompoundForm([_substitute(a, b, n) for n in tree])
-	except TypeError:  # it's a leaf
+	except TypeError:  # tree not iterable; it's a leaf
 		return tree
 
 
 # Substitution is a "meta-rule".
-# The result of form (sub (= a b) y) is a rule that
+# The result of [sub (= a b) y] is a rule that
 # replaces all appearances of a to b in y.
 class Substitution(Execution):
 	# check for (= a b)
@@ -77,7 +78,10 @@ class Substitution(Execution):
 		super().__init__(["equality", "origin"])
 
 	def evaluate(self, frame):
-		equality, origin = frame["equality"], frame["origin"]
+		equality, origin = (
+			frame["equality"],
+			interpreter.evaluate(frame["origin"]))
+
 		if not Substitution.equality_grammar.check(equality):
 			raise JimmyError(equality, "Form must be a two-term equality.")
 
@@ -115,7 +119,10 @@ def assignment(frame, ast):
 	return True
 
 
-# TODO progn rule?
+# Handled as a special case by the interpreter.
+#@rule_of_inference("progn", following=grammar.progn)
+#def progn(frame, ast):
+#	pass
 
 
 @rule_of_inference("cond", following=grammar.conditional)
@@ -152,21 +159,17 @@ def while_loop(frame, ast):
 		pl.add_result(loop_cond, assumed=True)
 		for form in while_form.children[2:]:
 			interpreter.evaluate(form)
-		# TODO check last result for the invariant
-	return expected == ast
 
+		# check last result for the invariant
+		invar = pl.results[-1]
+		try:
+			pl.previous.lookup(invar, lambda r: r.formula)
+		except KeyError:
+			raise JimmyError(invar, "Invariant not established before loop.")
 
-class WhileLoop(jexec.Execution):
-	def __init__(self):
-		super().__init__(["test-form", ["body"]])
-	def evaluate(self, frame):
-		test, body = frame["test-form"], frame["body"]
-		with interpreter.switch_stack(frame.last_frame):
-			result = nil
-			progn_body = _wrap_progn(body)
-			while _truthy(interpreter.evaluate(test)):
-				result = interpreter.evaluate(progn_body)
-			return result
+	return ast == CompoundForm([Symbol("and"),
+			CompoundForm([Symbol("not"), loop_cond]),
+			invar])
 
 
 class Addition(jexec.Function):
@@ -320,43 +323,6 @@ class Print(jexec.Function):
 	def evaluate(self, frame):
 		print(frame["msg"])
 		return nil
-
-
-class List(jexec.Function):
-	def __init__(self):
-		super().__init__([["elements"]])
-	def evaluate(self, frame):
-		return frame["elements"]
-
-class ListGet(jexec.Function):
-	def __init__(self):
-		super().__init__(["lst", "idx"])
-	def evaluate(self, frame):
-		lst, idx = frame["lst"], frame["idx"]
-		if not (0 <= idx < len(lst)):
-			raise errors.IndexError(frame.call_form)
-		return lst[idx]
-
-class ListSet(jexec.Function):
-	def __init__(self):
-		super().__init__(["lst", "idx", "val"])
-	def evaluate(self, frame):
-		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
-		if not (0 <= idx < len(lst)):
-			raise errors.IndexError(frame.call_form)
-		lst[idx] = val
-		return val
-
-
-class Length(jexec.Function):
-	def __init__(self):
-		super().__init__(["sequence"])
-	def evaluate(self, frame):
-		try:
-			return len(frame["sequence"])
-		except TypeError:
-			raise errors.JimmyError(
-				frame.call_form, "Object has no concept of length.")
 
 
 def _preorder_walk(tree, visitor=lambda x: x, leaves_only=False):
