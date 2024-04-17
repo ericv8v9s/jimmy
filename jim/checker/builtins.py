@@ -83,6 +83,7 @@ def _substitute(a, b, tree):
 	if tree == a:
 		return b
 	try:
+		# Yes, this is grossly inefficient.
 		return CompoundForm([_substitute(a, b, n) for n in tree])
 	except TypeError:  # tree not iterable; it's a leaf
 		return tree

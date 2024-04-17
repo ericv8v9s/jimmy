@@ -173,6 +173,7 @@ def evaluate(obj):
 
 		case CompoundForm(children=[Symbol(value="progn"), *body]):
 		# Special case for progn, always evaluated.
+		# TODO The proper way to handle progn should be a sub-proof.
 			for form in body:
 				evaluate(form)
 
