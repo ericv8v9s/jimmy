@@ -34,13 +34,14 @@
 	[(= x (+ (- r y) y (* y q)))]
 
 	(assign r (- r y))
-	[assign (= x (+ r y (* y q)))]  [mark crit-b1]
-	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit-b2]
-	[*distr (= (+ y (* y q)) (* y (+ q 1)))]  [mark crit-b3]
-	[[sub crit-b2 crit-b1] (= x (+ r (+ y (* y q))))]  [mark crit-b4]
-	[[sub crit-b3 crit-b4] (= x (+ r (* y (+ q 1))))]
+	[assign (= x (+ r y (* y q)))]  [mark crit1]
+	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit2]
+	[*distr (= (* (+ (* y q) (* y 1))) (* y (+ q 1)))]  [mark crit3]
+	[*distr (= (+ y (* y q)) (* y (+ q 1)))]  [mark crit3]
+	[[sub crit2 crit1] (= x (+ r (+ y (* y q))))]  [mark crit4]
+	[[sub crit3 crit4] (= x (+ r (* y (+ q 1))))]
 	(assign q (+ q 1))
-	; we have loop invariant again [(= x (+ r (* y q)))]
+	; we have loop invariant again (= x (+ r (* y q)))
 	[assign invar])
 
 ; We can examine the set of results known before the form and the form itself

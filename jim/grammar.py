@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from ast import *
+from jim.ast import *
 
 
 class _GrammarComponent(ABC):
@@ -17,7 +17,7 @@ class _GrammarComponent(ABC):
 			return _SpecializedComponent(specialization, args, kws)
 		# dynamically creates a new class
 		return type(
-			func.__name__,
+			specialization.__name__,
 			(_GrammarComponent,),
 			dict(check=type(self).check, __call__=make_spec_component))()
 
@@ -32,7 +32,7 @@ class _GrammarComponent(ABC):
 
 class _PredicateComponent(_GrammarComponent):
 	def __init__(self, check_func):
-		self.check_func
+		self.check_func = check_func
 	def check(self, ast):
 		return self.check_func(ast)
 
@@ -98,4 +98,12 @@ assignment = compound(symbol("assign"), symbol, form)
 function = compound(symbol("func"), compound, repeat(form))
 progn = compound(symbol("progn"), repeat(form))
 conditional = compound(symbol("cond"), repeat(compound(form, repeat(form))))
+implication = compound(symbol("imply"), form, form)
 while_loop = compound(symbol("while"), form, repeat(form))
+equality = compound(symbol("="), form, form)
+conjunction = compound(symbol("and"), repeat(form))
+disjunction = compound(symbol("or"), repeat(form))
+addition = compound(symbol("+"), repeat(form))
+subtraction = compound(symbol("-"), form, repeat(form))
+multiplication = compound(symbol("*"), repeat(form))
+division = compound(symbol("/"), form, repeat(form))

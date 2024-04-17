@@ -1,11 +1,11 @@
 from contextlib import contextmanager
-from dataclasses import dataclass
 from functools import partial
+from pydantic.dataclasses import dataclass
 
 import jim.checker.builtins as jbuiltins
 import jim.checker.execution as jexec
 from .errors import *
-from jim.syntax import *
+from jim.ast import *
 
 
 # Stackframe vs. ProofLevel:
@@ -21,7 +21,8 @@ class Stackframe:
 		self.last_frame = last_frame
 		self.call_form = call_form
 		if proof_level is None:
-			self.proof_level = last_form.proof_level
+			proof_level = last_frame.proof_level
+		self.proof_level = proof_level
 		self.symbol_table = dict()
 
 	def lookup(self, symbol):
@@ -34,13 +35,6 @@ class Stackframe:
 
 	def __getitem__(self, key):
 		return self.symbol_table[key]
-
-
-def init_frame_builtins(frame):
-	frame.symbol_table.update(jbuiltins.symbol_table)
-
-top_frame = Stackframe(None, "base frame", ProofLevel(None))
-init_frame_builtins(top_frame)
 
 
 def iter_stack():
@@ -80,7 +74,7 @@ def switch_stack(new_top_frame):
 # Each proof exists in a proof level,
 # and each sub-proof gets a new proof level on top of the previous.
 class ProofLevel:
-	@dataclass
+	@dataclass(config=dict(arbitrary_types_allowed=True))
 	class Result:
 		formula: Form
 		name: str = None
@@ -91,15 +85,22 @@ class ProofLevel:
 		self.results: list[Result] = []
 		self.last_form = None
 
+	def known_results(self):
+		level = self
+		while True:
+			for result in reversed(level.results):
+				yield result
+			if level is None:
+				break
+			level = level.previous
+
 	def lookup(self, key, to_key):
 		"""
 		Checks all previous results mapped by to_key for equality against key.
 		"""
-		for result in map(to_key, reversed(self.results)):
+		for result in map(to_key, self.known_results()):
 			if key == result:
 				return result
-		if self.previous is not None:
-			return self.previous.lookup(key, to_key)
 		raise KeyError
 
 	def lookup_name(self, name):
@@ -108,6 +109,14 @@ class ProofLevel:
 			return self.lookup(name, lambda r: r.name)
 		except KeyError:
 			raise UnknownNamedResultError(name) from None
+
+	def is_proven(self, formula):
+		"""Looks up the formula among known results."""
+		try:
+			self.lookup(formula, lambda r: r.formula)
+			return True
+		except KeyError:
+			return False
 
 	def add_result(self, validated_form, assumed=False):
 		result = ProofLevel.Result(validated_form, assumed=assumed)
@@ -131,6 +140,13 @@ def push_new_proof_level():
 		top_frame.proof_level = previous
 
 
+def init_frame_builtins(frame):
+	frame.symbol_table.update(jbuiltins.symbol_table)
+
+top_frame = Stackframe(None, "base frame", ProofLevel(None))
+init_frame_builtins(top_frame)
+
+
 def top_level_evaluate(form):
 	try:
 		evaluate(form)
@@ -146,7 +162,7 @@ def evaluate(obj):
 		case Integer(value=v):
 			return v
 		case Symbol(value=name):
-			return top_frame.lookup(name)
+			return top_frame.proof_level.lookup_name(name).formula
 		case String(value=s):
 			return s
 
@@ -166,11 +182,21 @@ def evaluate(obj):
 
 
 def invoke(compound):
-	execution = evaluate(compound[0])
+	execution = compound[0]
+	match execution:
+		case ProofAnnotation():
+			execution = evaluate(execution)
+		case Symbol(value=name):
+			# We lookup in the stack instead of the proof
+			# since we are looking for an execution here.
+			execution = top_frame.lookup(name)
+		case _:
+			pass
+
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise ProofError("Invocation target is invalid.")
+		raise JimmyError("Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
 		argv = [evaluate(arg) for arg in argv]
