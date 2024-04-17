@@ -1,9 +1,11 @@
 from functools import wraps
+
 from jim.ast import *
 import jim.grammar as gmr
 from jim.checker.errors import *
 from jim.checker.execution import Execution, Function
 import jim.checker.interpreter as interpreter
+from jim.debug import debug
 
 
 symbol_table = dict()
@@ -22,6 +24,9 @@ class _InferenceRule(Function):
 				raise InvalidRuleApplicationError(frame.call_form)
 			frame.proof_level.add_result(frame["_"])
 
+	def __repr__(self):
+		return f"{type(self).__name__}({self.validation_func.__name__})"
+
 
 _ANY_FORM = object()
 def rule_of_inference(name, following=_ANY_FORM):
@@ -30,13 +35,20 @@ def rule_of_inference(name, following=_ANY_FORM):
 	The function should accept a Stackframe object and an ast object,
 	and return a boolean to indicate successful or failed application.
 	"""
+	debug(
+			f"REGISTER RULE: {name} "
+			f"following {'ANY' if following is _ANY_FORM else following}")
+
 	def make_rule(func):
 		if following is _ANY_FORM:
 			return _InferenceRule(func)
 		# otherwise, rule can only apply following the correct form
 		@wraps(func)
 		def wrap(frame, proposition):
-			if following.check(frame.proof_level.last_form):
+			debug(f"GRAMMAR: {following} .CHECK {frame.proof_level.last_form}")
+			grammar_match = following.check(frame.proof_level.last_form)
+			debug("GRAMMAR:", "accept" if grammar_match else "reject")
+			if grammar_match:
 				try:
 					return func(frame, proposition)
 				except:

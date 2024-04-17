@@ -6,6 +6,7 @@ import jim.checker.builtins as jbuiltins
 import jim.checker.execution as jexec
 from .errors import *
 from jim.ast import *
+from jim.debug import debug
 
 
 # Stackframe vs. ProofLevel:
@@ -46,7 +47,7 @@ def iter_stack():
 
 @contextmanager
 def push_new_frame(call_form):
-	#print(f"DEBUG: PUSH: {call_form}")
+	debug(f"PUSH: {call_form}")
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
 	try:
@@ -55,7 +56,7 @@ def push_new_frame(call_form):
 		raise
 	finally:
 		top_frame = top_frame.last_frame
-		#print(f"DEBUG: POP: {call_form}")
+		debug(f"POP: {call_form}")
 
 
 @contextmanager
@@ -148,15 +149,18 @@ init_frame_builtins(top_frame)
 
 
 def top_level_evaluate(form):
+	debug(f"top_level_evaluate( {form} )")
 	try:
 		evaluate(form)
+		top_frame.proof_level.last_form = form
 	except JimmyError as e:
 		import sys
 		print(format_error(e), file=sys.stderr)
+		raise
 
 
 def evaluate(obj):
-	#print(f"DEBUG: evaluate( {obj} )")
+	debug(f"evaluate( {obj} )")
 
 	match obj:
 		case Integer(value=v):
@@ -202,7 +206,7 @@ def invoke(compound):
 	if isinstance(execution, jexec.EvaluateIn):
 		argv = [evaluate(arg) for arg in argv]
 
-	#print(f"DEBUG: invoke: ({execution} {argv})")
+	debug(f"invoke: {execution} {argv}")
 
 	try:
 		matched_params = jexec.fill_parameters(execution.parameter_spec, argv)

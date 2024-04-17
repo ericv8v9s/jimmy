@@ -1,11 +1,16 @@
 from abc import ABC, abstractmethod
 from jim.ast import *
+from jim.debug import debug
 
 
 class _GrammarComponent(ABC):
+	def __init__(self):
+		super().__init__()
+		self.specialization = None
+
 	@abstractmethod
 	def check(self, ast: CodeObject):
-		pass
+		raise NotImplementedError
 
 	def specialize(self, specialization):
 		"""
@@ -13,13 +18,29 @@ class _GrammarComponent(ABC):
 		component is called, a new component that matches against the
 		specialization is returned.
 		"""
+		self.specialization = specialization
+		return self
+
+		# This member function is used to decorate another function,
+		# which is used to specialize this grammar component.
+		# The return value of this function is an instance from a dynamically
+		# created class: it is still a grammar component with the same
+		# functionalities, except the object is now a callable.
+		# Calling the object calls make_spec_component, which stores the arguments
+		# as specialization specification and produces a new component that uses
+		# the decorated function for validation.
+
 		def make_spec_component(self, *args, **kws):
-			return _SpecializedComponent(specialization, args, kws)
+			return _SpecializedComponent(self, specialization, args, kws)
+
 		# dynamically creates a new class
 		return type(
 			specialization.__name__,
 			(_GrammarComponent,),
-			dict(check=type(self).check, __call__=make_spec_component))()
+			dict(__call__=make_spec_component))()
+
+	def __call__(self, *args):
+		if self.specialization:
 
 	def __or__(self, other):
 		return _grammar_component(
@@ -35,6 +56,8 @@ class _PredicateComponent(_GrammarComponent):
 		self.check_func = check_func
 	def check(self, ast):
 		return self.check_func(ast)
+	def __repr__(self):
+		return self.check_func.__name__
 
 
 class _SpecializedComponent(_GrammarComponent):
@@ -44,7 +67,13 @@ class _SpecializedComponent(_GrammarComponent):
 		self.kws = kws
 
 	def check(self, ast):
-		return super().check(ast) and func(ast, *self.args, **self.kws)
+		debug("GRAMMAR:", f"{self.origin}({self.args} {self.kws})")
+		out = self.origin.check(ast) and self.spec(ast, *self.args, **self.kws)
+		debug("GRAMMAR", "ACCEPT" if out else "REJECT")
+		return out
+
+	def __repr__(self):
+		return f"{self.spec.__name__}({self.args} {self.kws})"
 
 
 class repeat(_GrammarComponent):
@@ -52,6 +81,8 @@ class repeat(_GrammarComponent):
 		self.component = component
 	def check(self, ast):
 		return True
+	def __repr__(self):
+		return f"repeat({repr(self.component)})"
 
 
 def _grammar_component(check_func):
@@ -65,7 +96,6 @@ def symbol(ast):
 @symbol.specialize
 def symbol(ast, name):
 	return ast.value == name
-
 
 @_grammar_component
 def form(ast):
@@ -83,6 +113,7 @@ def compound(ast, *forms_spec):
 
 	idx = 0
 	for s in forms_spec:
+		debug(s)
 		if isinstance(s, repeat):
 			while idx < len(ast) and s.component.check(ast[idx]):
 				idx += 1

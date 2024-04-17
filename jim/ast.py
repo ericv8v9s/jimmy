@@ -6,8 +6,8 @@ class _ValueMixin:
 		self.value = value
 		super().__init__(*args, **kws)
 
-	def __str__(self):
-		return str(self.value)
+	def __repr__(self):
+		return f"{type(self).__name__}({repr(self.value)})"
 
 	def __hash__(self):
 		return hash(self.value)
@@ -24,6 +24,9 @@ class _CompoundMixin:
 		self.children = tuple(children)
 		super().__init__(*args, **kws)
 
+	def __len__(self):
+		return len(self.children)
+
 	def __iter__(self):
 		return iter(self.children)
 
@@ -32,6 +35,10 @@ class _CompoundMixin:
 
 	def __contains__(self, item):
 		return self == item or any(item in child for child in self.children)
+
+	def __repr__(self):
+		return type(self).__name__  \
+				+ "(" + " ".join(map(repr, self.children)) + ")"
 
 	def __hash__(self):
 		return hash(self.children)
@@ -68,26 +75,15 @@ class String(Atom):
 		'"': '\\"',
 		"\\": "\\\\"})
 
-	def __str__(self):
-		return '"' + self.value.translate(self._str_escape) + '"'
-
 
 class CompoundForm(_CompoundMixin, Form):
 	def __init__(self, forms):
 		super().__init__(children=forms)
-	def __str__(self):
-		return "(" + " ".join(map(str, self.children)) + ")"
-
 
 class ProofAnnotation(_CompoundMixin, CodeObject):
 	def __init__(self, forms):
 		super().__init__(children=forms)
-	def __str__(self):
-		return "[" + " ".join(map(str, self.children)) + "]"
-
 
 class Comment(_ValueMixin, CodeObject):
 	def __init__(self, content):
 		super().__init__(value=content)
-	def __str__(self):
-		return f";{self.value}\n"
