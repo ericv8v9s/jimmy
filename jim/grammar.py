@@ -3,117 +3,78 @@ from jim.ast import *
 from jim.debug import debug
 
 
-class _GrammarComponent(ABC):
-	def __init__(self):
-		super().__init__()
-		self.specialization = None
-
+class _GrammarBase(ABC):
 	@abstractmethod
 	def check(self, ast: CodeObject):
 		raise NotImplementedError
 
-	def specialize(self, specialization):
-		"""
-		Decorate with a specialization function such that when the resulting
-		component is called, a new component that matches against the
-		specialization is returned.
-		"""
-		self.specialization = specialization
-		return self
 
-		# This member function is used to decorate another function,
-		# which is used to specialize this grammar component.
-		# The return value of this function is an instance from a dynamically
-		# created class: it is still a grammar component with the same
-		# functionalities, except the object is now a callable.
-		# Calling the object calls make_spec_component, which stores the arguments
-		# as specialization specification and produces a new component that uses
-		# the decorated function for validation.
-
-		def make_spec_component(self, *args, **kws):
-			return _SpecializedComponent(self, specialization, args, kws)
-
-		# dynamically creates a new class
-		return type(
-			specialization.__name__,
-			(_GrammarComponent,),
-			dict(__call__=make_spec_component))()
-
-	def __call__(self, *args):
-		if self.specialization:
-
-	def __or__(self, other):
-		return _grammar_component(
-			lambda ast: self.check(ast) or other.check(ast))
-
-	def __and__(self, other):
-		return _grammar_component(
-			lambda ast: self.check(ast) and other.check(ast))
-
-
-class _PredicateComponent(_GrammarComponent):
-	def __init__(self, check_func):
+class _grammar(_GrammarBase):
+	def __init__(self, check_func,
+			spec_check=None, specification=None):
 		self.check_func = check_func
-	def check(self, ast):
-		return self.check_func(ast)
+		# Specification for specialization:
+		# an iterable of other grammars components.
+		self.specification = specification
+		self.spec_check = spec_check if spec_check else check_func
+
+	def check(self, ast: CodeObject):
+		if self.specification is None:
+			return self.check_func(ast)
+		return self.check_func(ast) and self.spec_check(ast, *self.specification)
+
+	def specialized(self, specialized_check):
+		return _grammar(
+				self.check_func,
+				spec_check=specialized_check,
+				specification=self.specification)
+
+	def __call__(self, *specification):
+		"""Produces a new grammar object that checks against the specification."""
+		return _grammar(
+				self.check_func,
+				spec_check=self.spec_check,
+				specification=specification)
+
 	def __repr__(self):
-		return self.check_func.__name__
+		if self.specification is None:
+			return self.check_func.__name__
+		return self.spec_check.__name__   \
+				+ "(" + " ".join(map(repr, self.specification)) + ")"
 
 
-class _SpecializedComponent(_GrammarComponent):
-	def __init__(self, spec, args, kws):
-		self.spec = spec
-		self.args = args
-		self.kws = kws
-
-	def check(self, ast):
-		debug("GRAMMAR:", f"{self.origin}({self.args} {self.kws})")
-		out = self.origin.check(ast) and self.spec(ast, *self.args, **self.kws)
-		debug("GRAMMAR", "ACCEPT" if out else "REJECT")
-		return out
-
-	def __repr__(self):
-		return f"{self.spec.__name__}({self.args} {self.kws})"
-
-
-class repeat(_GrammarComponent):
+class repeat(_GrammarBase):
 	def __init__(self, component):
 		self.component = component
 	def check(self, ast):
 		return True
 	def __repr__(self):
-		return f"repeat({repr(self.component)})"
+		return f"repeat({self.component!r})"
 
 
-def _grammar_component(check_func):
-	return _PredicateComponent(check_func)
-
-
-@_grammar_component
+@_grammar
 def symbol(ast):
 	return isinstance(ast, Symbol)
 
-@symbol.specialize
+@symbol.specialized
 def symbol(ast, name):
 	return ast.value == name
 
-@_grammar_component
+
+@_grammar
 def form(ast):
 	return isinstance(ast, Form)
 
 
-@_grammar_component
+@_grammar
 def compound(ast):
 	return isinstance(ast, CompoundForm)
 
-@compound.specialize
-def compound(ast, *forms_spec):
-	if len(forms_spec) == 0:
-		return len(ast) == 0
-
+@compound.specialized
+def compound(ast, *children):
 	idx = 0
-	for s in forms_spec:
-		debug(s)
+	for s in children:
+		debug(f"GRAMMAR: {s!r} == {ast[idx]!r}")
 		if isinstance(s, repeat):
 			while idx < len(ast) and s.component.check(ast[idx]):
 				idx += 1
@@ -121,7 +82,7 @@ def compound(ast, *forms_spec):
 			if idx >= len(ast) or not s.check(ast[idx]):
 				return False
 			idx += 1
-	return idx == len(ast) - 1
+	return idx == len(ast)
 
 
 assertion = compound(symbol("assert"), form)

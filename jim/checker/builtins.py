@@ -1,4 +1,4 @@
-from functools import wraps
+from functools import wraps, partial
 
 from jim.ast import *
 import jim.grammar as gmr
@@ -36,23 +36,23 @@ def rule_of_inference(name, following=_ANY_FORM):
 	and return a boolean to indicate successful or failed application.
 	"""
 	debug(
-			f"REGISTER RULE: {name} "
-			f"following {'ANY' if following is _ANY_FORM else following}")
+			f"REGISTER RULE: {'anon.' if name is None else name} "
+			f"following {'any' if following is _ANY_FORM else repr(following)}")
 
 	def make_rule(func):
 		if following is _ANY_FORM:
 			return _InferenceRule(func)
+
 		# otherwise, rule can only apply following the correct form
 		@wraps(func)
 		def wrap(frame, proposition):
-			debug(f"GRAMMAR: {following} .CHECK {frame.proof_level.last_form}")
+			debug(
+				f"GRAMMAR: {following!r}"
+				f" == {frame.proof_level.last_form!r}")
 			grammar_match = following.check(frame.proof_level.last_form)
-			debug("GRAMMAR:", "accept" if grammar_match else "reject")
+			debug("GRAMMAR:", "ACCEPT" if grammar_match else "REJECT")
 			if grammar_match:
-				try:
-					return func(frame, proposition)
-				except:
-					return False
+				return func(frame, proposition)
 			else:
 				raise RuleFormMismatchError(
 						frame.call_form, frame.proof_level.last_form)
@@ -64,7 +64,7 @@ def rule_of_inference(name, following=_ANY_FORM):
 			return symbol_table[name]
 		return reg_rule
 	else:
-		return lambda f: make_rule(func)
+		return lambda f: make_rule(f)
 
 
 # Not really a rule of inference.
@@ -77,9 +77,31 @@ class MarkResult(Execution):
 		super().__init__(["name"])
 	def evaluate(self, frame):
 		name = frame["name"].value
-		frame.proof_level.mark_last_result(frame["name"])
+		frame.proof_level.mark_last_result(frame["name"].value)
 
 symbol_table["mark"] = MarkResult()
+
+
+import sys
+
+class DisplayProofState(Execution):
+	def __init__(self):
+		super().__init__(["id"])
+
+	def evaluate(self, frame):
+		to_stderr = partial(print, file=sys.stderr)
+		title = f" Known results: {frame['id']} "
+
+		to_stderr(format(title, "=^60"))
+		to_stderr("| FORMULA                                | NAME        |AS?|")
+		for result in frame.proof_level.known_results():
+			formula = result.formula
+			name = "" if result.name is None else result.name
+			assumed = " X " if result.assumed else "   "
+			to_stderr(f"| {result.formula!s:<39}| {name:<12}|{assumed}|")
+		to_stderr(60 * "=")
+
+symbol_table["__show_known"] = DisplayProofState()
 
 
 @rule_of_inference("assert", following=gmr.assertion)
@@ -128,19 +150,14 @@ def assignment(frame, ast):
 
 	# Application is valid if the substitution result was already proven.
 	target = _substitute(lhs, rhs, ast)
+	debug(f"RULE assign: need {target}")
+
 	level = frame.proof_level
-	while level is not None:
-		for result in level.results:
-			if target == result.formula:
-				break
-		level = level.previous
-	else:
-		# All results from all levels checked; no match.
+	if not level.is_known(target):
 		return False
 
-	# Assignment must also invalidate all previous results
-	# that involve the symbol being assigned to.
-	level = frame.proof_level
+	# Assignment must also invalidate all previous results that involve
+	# the symbol being assigned to.
 	while level is not None:
 		level.results = [r for r in level.results if lhs not in r.formula]
 		level = level.previous
@@ -191,7 +208,7 @@ def while_loop(frame, ast):
 
 		# check last result for the invariant
 		invar = pl.results[-1]
-		if not pl.previous.is_proven(invar):
+		if not pl.previous.is_known(invar):
 			raise JimmyError(invar, "Invariant not established before loop.")
 
 	return ast == CompoundForm([Symbol("and"),
@@ -203,6 +220,9 @@ def _match_formula(actual, *expected):
 	"""
 	Checks that the provided formula and expectation shares the same prefix.
 	"""
+	debug("match formula: "
+		f"expecting {' '.join(map(repr, expected))}; "
+		f"actual {' '.join(map(repr, actual))}")
 	return all(actual[i] == x for i, x in enumerate(expected))
 
 
@@ -226,7 +246,7 @@ def identity_introduction(frame, lhs, rhs):
 @rule_of_inference("=flip")
 @_equality_relation
 def equality_flip(frame, lhs, rhs):
-	return frame.proof_level.is_proven(CompoundForm(Symbol("="), rhs, lhs))
+	return frame.proof_level.is_known(CompoundForm(Symbol("="), rhs, lhs))
 
 
 @rule_of_inference("conj-intr")
@@ -235,8 +255,8 @@ def conjunction_introduction(frame, ast):
 	if not gmr.conjunction.check(ast):
 		return False
 	for formula in ast.children[1:]:
-		if not frame.proof_level.is_proven(formula):
-			raise JimmyError(formula, "Conjunt not proven.")
+		if not frame.proof_level.is_known(formula):
+			raise JimmyError(formula, "Conjunt not known.")
 	return True
 
 
@@ -257,7 +277,7 @@ def disjunction_introduction(frame, ast):
 	if not gmr.disjunction.check(ast):
 		return False
 	for formula in ast.children[1:]:
-		if frame.proof_level.is_proven(formula):
+		if frame.proof_level.is_known(formula):
 			return True
 	return False
 
@@ -282,8 +302,8 @@ class ModusPonens(Function):
 			raise JimmyError(implication, "Not an implication.")
 		p, q = implication[1], implication[2]
 		def rule_spec(f, ast):
-			is_proven = f.proof_level.is_proven
-			return is_proven(implication) and is_proven(p) and ast == q
+			is_known = f.proof_level.is_known
+			return is_known(implication) and is_known(p) and ast == q
 		return rule_of_inference(None)(rule_spec)
 
 symbol_table["mp"] = ModusPonens()
@@ -295,24 +315,26 @@ symbol_table["mp"] = ModusPonens()
 # TODO Arithmetic rules should be properly built from Peano axioms.
 # Some of those can definitely be turned into theorems.
 
-@rule_of_inference("0+")
+@rule_of_inference("add0")
 @_equality_relation
 def additive_identity(f, lhs, rhs):
 	return _match_formula(rhs, Symbol("+"), lhs, Integer(0))
 
-@rule_of_inference("0-")
+@rule_of_inference("subt0")
 @_equality_relation
 def subtractive_identity(f, lhs, rhs):
 	return _match_formula(rhs, Symbol("-"), lhs, Integer(0))
 
 
-@rule_of_inference("0*")
+@rule_of_inference("mult0")
 @_equality_relation
 def multiply_zero(f, lhs, rhs):
 	# expect [0* (= 0 (* 0 anything...))]
-	return lhs == Integer(0) and _match_formula(rhs, Symbol("*"), 0)
+	debug(f"{lhs=}")
+	debug(f"{rhs=}")
+	return lhs == Integer(0) and _match_formula(rhs, Symbol("*"), Integer(0))
 
-@rule_of_inference("1*")
+@rule_of_inference("mult1")
 @_equality_relation
 def multiplicative_identity(f, lhs, rhs):
 	return _match_formula(rhs, Symbol("*"), lhs, Integer(1))
@@ -324,8 +346,8 @@ def mult_wrap(f, lhs, rhs):
 
 @rule_of_inference("+wrap")
 @_equality_relation
-def mult_wrap(f, lhs, rhs):
-	return gmr.compound(gmr.symbol("*"), gmr.form).check(rhs) and rhs[1] == lhs
+def addition_wrap(f, lhs, rhs):
+	return gmr.compound(gmr.symbol("+"), gmr.form).check(rhs) and rhs[1] == lhs
 
 
 def _tree_flatten1(tree):

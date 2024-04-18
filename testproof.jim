@@ -1,2 +1,47 @@
+; INPUT
+(assign x 7)
+(assign y 2)
 (assert (not (= y 0)))
 [assert (not (= y 0))]
+
+[=intr (= x x)]
+(assign r x)
+[assign (= x r)]
+[mark xr1]
+
+[add0 (= r (+ r 0))]
+[mark xr2]
+; substitute xr2 (which must be of form (= a b)) into xr1: r -> (+ r 0)
+[[sub xr2 xr1] (= x (+ r 0))]
+[mark xr3]
+
+[mult0 (= 0 (* 0 y))]
+[mark y0]
+[[sub y0 xr3] (= x (+ r (* 0 y)))]
+[mark xr4]
+
+[=intr (= 0 0)]
+(assign q 0)
+[assign (= 0 q)]
+[[sub (= 0 q) xr4] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
+
+[__show_known 0]
+[__show_known x]
+
+(while (<= y r)
+	; begins sub-proof
+	; TODO find a way to derive this
+	[(= x (+ (- r y) y (* y q)))]
+
+	(assign r (- r y))
+	[assign (= x (+ r y (* y q)))]  [mark crit1]
+	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit2]
+	[*distr (= (* (+ (* y q) (* y 1))) (* y (+ q 1)))]  [mark crit3]
+	[*distr (= (+ y (* y q)) (* y (+ q 1)))]  [mark crit3]
+	[[sub crit2 crit1] (= x (+ r (+ y (* y q))))]  [mark crit4]
+	[[sub crit3 crit4] (= x (+ r (* y (+ q 1))))]
+	(assign q (+ q 1))
+	; we have loop invariant again (= x (+ r (* y q)))
+	[assign invar])
+
+[__show_known end]

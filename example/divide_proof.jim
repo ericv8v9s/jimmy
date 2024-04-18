@@ -10,16 +10,15 @@
 [assign (= x r)]  ; rule of assignment; substitute r for x gives (= x x)
 [mark xr1]  ; marks last result as "xr1"
 
-; TODO arithmetic inference rules
-[0+ (= r (+ r 0))]  ; rule of additive identity
+[add0 (= r (+ r 0))]  ; rule of additive identity
 [mark xr2]
 ; substitute xr2 (which must be of form (= a b)) into xr1: r -> (+ r 0)
 [[sub xr2 xr1] (= x (+ r 0))]
 [mark xr3]
 
-[0* (= 0 (* y 0))]  ; rule of multiply by zero
+[mult0 (= 0 (* 0 y))]  ; rule of multiply by zero
 [mark y0]
-[[sub y0 xr3] (= x (+ r (* y 0)))]
+[[sub y0 xr3] (= x (+ r (* 0 y)))]
 [mark xr4]
 
 [=intr (= 0 0)]

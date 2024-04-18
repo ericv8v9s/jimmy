@@ -4,5 +4,5 @@ if __debug__:
 		kws.setdefault("file", stderr)
 		print(*args, **kws)
 else:
-	def debug(msg, **kws):
+	def debug(*args, **kws):
 		pass

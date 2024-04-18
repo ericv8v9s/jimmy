@@ -91,16 +91,16 @@ class ProofLevel:
 		while True:
 			for result in reversed(level.results):
 				yield result
+			level = level.previous
 			if level is None:
 				break
-			level = level.previous
 
 	def lookup(self, key, to_key):
 		"""
 		Checks all previous results mapped by to_key for equality against key.
 		"""
-		for result in map(to_key, self.known_results()):
-			if key == result:
+		for result in self.known_results():
+			if key == to_key(result):
 				return result
 		raise KeyError
 
@@ -111,11 +111,17 @@ class ProofLevel:
 		except KeyError:
 			raise UnknownNamedResultError(name) from None
 
-	def is_proven(self, formula):
+	def is_known(self, formula):
 		"""Looks up the formula among known results."""
 		try:
 			self.lookup(formula, lambda r: r.formula)
 			return True
+		except KeyError:
+			return False
+
+	def is_proven(self, formula):
+		try:
+			return not self.lookup(formula, lambda r: r.formula).assumed
 		except KeyError:
 			return False
 
@@ -125,7 +131,7 @@ class ProofLevel:
 
 	def mark_last_result(self, name):
 		last_result = self.results[-1]
-		result = Result(last_result.formula, name, last_result.assumed)
+		result = ProofLevel.Result(last_result.formula, name, last_result.assumed)
 		self.results[-1] = result
 
 
@@ -152,11 +158,13 @@ def top_level_evaluate(form):
 	debug(f"top_level_evaluate( {form} )")
 	try:
 		evaluate(form)
-		top_frame.proof_level.last_form = form
+		if not (isinstance(form, Comment) or isinstance(form, ProofAnnotation)):
+			top_frame.proof_level.last_form = form
+		return True
 	except JimmyError as e:
 		import sys
 		print(format_error(e), file=sys.stderr)
-		raise
+		return False
 
 
 def evaluate(obj):
@@ -176,8 +184,8 @@ def evaluate(obj):
 			return invoke(obj)
 
 		case CompoundForm(children=[Symbol(value="progn"), *body]):
-		# Special case for progn, always evaluated.
-		# TODO The proper way to handle progn should be a sub-proof.
+			# Special case for progn, always evaluated.
+			# TODO The proper way to handle progn should be a sub-proof.
 			for form in body:
 				evaluate(form)
 
@@ -201,7 +209,7 @@ def invoke(compound):
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError("Invocation target is invalid.")
+		raise JimmyError(compound, "Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
 		argv = [evaluate(arg) for arg in argv]
