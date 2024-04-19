@@ -1,7 +1,9 @@
 from functools import wraps, partial
+from collections import Counter
 
 from jim.ast import *
 import jim.grammar as gmr
+from jim.grammar import symbol, compound, repeat, form
 from jim.checker.errors import *
 from jim.checker.execution import Execution, Function
 import jim.checker.interpreter as interpreter
@@ -23,6 +25,7 @@ class _InferenceRule(Function):
 			if not valid:
 				raise InvalidRuleApplicationError(frame.call_form)
 			frame.proof_level.add_result(frame["_"])
+		return frame["_"]
 
 	def __repr__(self):
 		return f"{type(self).__name__}({self.validation_func.__name__})"
@@ -177,25 +180,6 @@ def conditional(frame, ast):
 	raise NotImplementedError
 
 
-#class Conditional(jexec.Macro):
-#	def __init__(self):
-#		# (cond
-#		#   ((test1) things...)
-#		#   ((test2) things...))
-#		super().__init__([["branches"]])
-#
-#	def evaluate(self, frame):
-#		for b in frame["branches"]:
-#			match b:
-#				case CompoundForm(children=[test, *body]):
-#					with interpreter.switch_stack(frame.last_frame):
-#						if _truthy(interpreter.evaluate(test)):
-#							return _wrap_progn(body)
-#				case _:
-#					raise errors.SyntaxError(b, "Invalid conditional branch.")
-#		return nil
-
-
 @rule_of_inference("while", following=gmr.while_loop)
 def while_loop(frame, ast):
 	while_form = frame.proof_level.last_form
@@ -318,36 +302,52 @@ symbol_table["mp"] = ModusPonens()
 @rule_of_inference("add0")
 @_equality_relation
 def additive_identity(f, lhs, rhs):
-	return _match_formula(rhs, Symbol("+"), lhs, Integer(0))
+	return rhs == CompoundForm(Symbol("+"), Integer(0), lhs)
 
 @rule_of_inference("subt0")
 @_equality_relation
 def subtractive_identity(f, lhs, rhs):
-	return _match_formula(rhs, Symbol("-"), lhs, Integer(0))
+	return rhs == CompoundForm(Symbol("-"), lhs, Integer(0))
 
 
 @rule_of_inference("mult0")
 @_equality_relation
 def multiply_zero(f, lhs, rhs):
-	# expect [0* (= 0 (* 0 anything...))]
+	# [mult0 (= 0 (* 0 anything...))]
 	debug(f"{lhs=}")
 	debug(f"{rhs=}")
-	return lhs == Integer(0) and _match_formula(rhs, Symbol("*"), Integer(0))
+	return lhs == Integer(0)  \
+			and len(rhs) >= 2  \
+			and rhs[0] == Symbol("*")  \
+			and rhs[1] == Integer(0)
+
 
 @rule_of_inference("mult1")
 @_equality_relation
 def multiplicative_identity(f, lhs, rhs):
-	return _match_formula(rhs, Symbol("*"), lhs, Integer(1))
+	return rhs == CompoundForm(Symbol("*"), lhs, Integer(1))
 
 @rule_of_inference("*wrap")
 @_equality_relation
 def mult_wrap(f, lhs, rhs):
-	return gmr.compound(gmr.symbol("*"), gmr.form).check(rhs) and rhs[1] == lhs
+	return compound(symbol("*"), form).check(rhs) and rhs[1] == lhs
 
 @rule_of_inference("+wrap")
 @_equality_relation
 def addition_wrap(f, lhs, rhs):
-	return gmr.compound(gmr.symbol("+"), gmr.form).check(rhs) and rhs[1] == lhs
+	return compound(symbol("+"), form).check(rhs) and rhs[1] == lhs
+
+@rule_of_inference("+comm")
+@_equality_relation
+def addition_commutativity(f, lhs, rhs):
+	return Symbol("+") == lhs.head == rhs.head  \
+			and Counter(lhs.rest) == Counter(rhs.rest)
+
+@rule_of_inference("*comm")
+@_equality_relation
+def multiplication_commutativity(f, lhs, rhs):
+	return Symbol("*") == lhs.head == rhs.head  \
+			and Counter(lhs.rest) == Counter(rhs.rest)
 
 
 def _tree_flatten1(tree):
@@ -402,43 +402,44 @@ def multiplication_associativity(f, lhs, rhs):
 @rule_of_inference("*distr")
 @_equality_relation
 def multiplication_distributivity(f, lhs, rhs):
-	if not gmr.compound(gmr.symbol("*"),
-			gmr.form, gmr.form, gmr.repeat(gmr.form)).check(rhs):
+	# We expect (+ (* x a ...) (* x b ...) ...) for lhs;
+	# (* x (+ a b c ...)) for rhs.
+	# We expect the two to match after pulling common factors out of lhs.
+	sym = symbol
+	cmp = compound
+	lhs_gmr = cmp(sym("+"), repeat(cmp(sym("*"), form, repeat(form))))
+	rhs_gmr = cmp(sym("*"), form, cmp(sym("+"), repeat(form)))
+	if not (lhs_gmr.check(lhs) and rhs_gmr.check(rhs)):
 		return False
-	distributing = rhs[1]
-	result = [Symbol("+")]
-	for x in rhs.children[1:]:
-		distributed.append(CompoundForm([Symbol("*"), ]))
+
+	common_factor = rhs[1]
+	terms = rhs[2].rest
+	expected = CompoundForm([Symbol("+"), *(
+			CompoundForm([Symbol("*"), common_factor, term]) for term in terms)])
+	return expected == lhs
+
+
+@rule_of_inference("-distr")
+@_equality_relation
+def subtraction_elimination(f, lhs, rhs):
+	# (= (- a b c ...) (+ a (* -1 b) (* -1 c) ...))
+	lhs_gmr = compound(symbol("-"), form, repeat(form)).check(lhs)
+	rhs_gmr = compound(symbol("+"), form,
+			repeat(compound(symbol("*"), gmr.integer(-1), form)))
+	if not (lhs_gmr.check(lhs) and rhs_gmr.check(rhs)):
+		return False
+	if lhs[1] != rhs[1]:
+		return False
+
+	try:
+		for l, r in zip(lhs.children[2:], rhs.children[2:], strict=True):
+			if l != CompoundForm(Symbol("*"), Integer(-1), l):
+				return False
+	except ValueError:
+		return False
+
+	return True
 
 
 # TODO division and mod
 
-
-#def _preorder_walk(tree, visitor=lambda x: x, leaves_only=False):
-#	"""
-#	Walks the tree in pre-order and visits each node using the visitor.
-#	The tree should be structured as nested iterables.
-#	"""
-#
-#	stack = []
-#
-#	try:
-#		stack.append(iter(tree))
-#		if not leaves_only:
-#			yield visitor(tree)
-#	except TypeError:
-#		yield visitor(tree)
-#
-#	while len(stack) > 0:
-#		try:
-#			n = next(stack[-1])
-#		except StopIteration:
-#			stack.pop()
-#			continue
-#
-#		try:
-#			stack.append(iter(n))
-#			if not leaves_only:
-#				yield visitor(n)
-#		except TypeError:
-#			yield visitor(n)

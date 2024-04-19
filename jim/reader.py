@@ -173,6 +173,8 @@ def parse_integer(chars):
 
 	for c in chars:
 		if c not in _DIGITS:
+			if c not in _SPACES:
+				return ParseResult(False)
 			break
 		num_str.append(c)
 	return ParseResult(True, Integer(int("".join(num_str))), -1)

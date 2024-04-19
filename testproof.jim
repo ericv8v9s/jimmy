@@ -25,23 +25,26 @@
 [assign (= 0 q)]
 [[sub (= 0 q) xr4] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
 
-[__show_known 0]
-[__show_known x]
-
 (while (<= y r)
-	; begins sub-proof
-	; TODO find a way to derive this
-	[(= x (+ (- r y) y (* y q)))]
+	[__show_known begin-while]
+	[(= x (+ (- r y) y (* y q)))]  ; want this
 
 	(assign r (- r y))
 	[assign (= x (+ r y (* y q)))]  [mark crit1]
 	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit2]
-	[*distr (= (* (+ (* y q) (* y 1))) (* y (+ q 1)))]  [mark crit3]
+	[*distr (= (+ (* y q) (* y 1)) (* y (+ q 1)))]  [mark crit3]
 	[*distr (= (+ y (* y q)) (* y (+ q 1)))]  [mark crit3]
 	[[sub crit2 crit1] (= x (+ r (+ y (* y q))))]  [mark crit4]
 	[[sub crit3 crit4] (= x (+ r (* y (+ q 1))))]
 	(assign q (+ q 1))
 	; we have loop invariant again (= x (+ r (* y q)))
 	[assign invar])
+
+[__show_known 0]
+
+[while (and
+	(not (<= y r))  ; negation of loop condition
+	; this must be known before the loop and shown to be maintained by the loop
+	(= x (+ r (* y q))))]
 
 [__show_known end]

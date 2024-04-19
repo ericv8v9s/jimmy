@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from jim.ast import *
+from jim.ast import filter_tree
 from jim.debug import debug
 
 
@@ -19,6 +20,7 @@ class _grammar(_GrammarBase):
 		self.spec_check = spec_check if spec_check else check_func
 
 	def check(self, ast: CodeObject):
+		ast = filter_tree(ast, lambda o: not isinstance(o, ProofAnnotation))
 		if self.specification is None:
 			return self.check_func(ast)
 		return self.check_func(ast) and self.spec_check(ast, *self.specification)
@@ -55,10 +57,17 @@ class repeat(_GrammarBase):
 @_grammar
 def symbol(ast):
 	return isinstance(ast, Symbol)
-
 @symbol.specialized
 def symbol(ast, name):
 	return ast.value == name
+
+
+@_grammar
+def integer(ast):
+	return isinstance(ast, Integer)
+@integer.specialized
+def integer(ast, value):
+	return ast.value == value
 
 
 @_grammar

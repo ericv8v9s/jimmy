@@ -39,6 +39,14 @@ class _CompoundMixin:
 	def __contains__(self, item):
 		return self == item or any(item in child for child in self.children)
 
+	@property
+	def head(self):
+		return self.children[0]
+
+	@property
+	def rest(self):
+		return self.children[1:]
+
 	def __repr__(self):
 		return type(self).__name__  \
 				+ "(" + " ".join(map(repr, self.children)) + ")"
@@ -98,3 +106,50 @@ class Comment(_ValueMixin, CodeObject):
 		super().__init__(value=content)
 	def __str__(self):
 		return ";" + self.value + "\\n"
+
+
+def filter_tree(tree, criteria):
+	"""
+	Filter for nodes meeting the criteria.
+	The tree must take the form of nested iterables,
+	where iterables are internal nodes, or otherwise considered a leaf.
+	Tree nodes are not mutated: the modified tree are rebuilt bottom up.
+	To do so, all non-leaf nodes must allow construction by passing an
+	iterable of children.
+	If the root matches the criteria, None is returned.
+	"""
+
+	_REMOVED = object()
+
+	def not_removed(x):
+		return x is not _REMOVED
+
+	def _filter_tree(tree):
+		if not criteria(tree):
+			return _REMOVED
+
+		try:
+			iter(tree)
+			is_leaf = False
+		except TypeError:
+			is_leaf = True
+
+		if is_leaf:
+			return tree
+		else:
+			return type(tree)(filter(not_removed, map(_filter_tree, tree)))
+
+	filtered = _filter_tree(tree)
+	if filtered is _REMOVED:
+		return None
+	return filtered
+
+
+__all__ = [x.__name__ for x in [
+	CodeObject,
+	Form,
+	Atom, Integer, Symbol, String,
+	CompoundForm,
+	ProofAnnotation,
+	Comment
+]]

@@ -6,6 +6,7 @@ import jim.checker.builtins as jbuiltins
 import jim.checker.execution as jexec
 from .errors import *
 from jim.ast import *
+from jim.ast import filter_tree
 from jim.debug import debug
 
 
@@ -156,9 +157,15 @@ init_frame_builtins(top_frame)
 
 def top_level_evaluate(form):
 	debug(f"top_level_evaluate( {form} )")
+
+	# purge comments
+	form = filter_tree(form, lambda f: not isinstance(f, Comment))
+	if form is None:
+		return True
+
 	try:
 		evaluate(form)
-		if not (isinstance(form, Comment) or isinstance(form, ProofAnnotation)):
+		if not isinstance(form, ProofAnnotation):
 			top_frame.proof_level.last_form = form
 		return True
 	except JimmyError as e:
@@ -180,7 +187,7 @@ def evaluate(obj):
 
 		case ProofAnnotation(children=forms):
 			if len(forms) == 0:
-				return True
+				return None
 			return invoke(obj)
 
 		case CompoundForm(children=[Symbol(value="progn"), *body]):
