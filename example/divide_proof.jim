@@ -82,8 +82,6 @@
 	; this must be known before the loop and shown to be maintained by the loop
 	(= x (+ r (* q y))))]
 
-[show_proof_state end]
-
 ; OUTPUT
 (print q)
 (print r)

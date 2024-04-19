@@ -2,7 +2,7 @@ def main(argv):
 	import sys
 	from jim import reader, main
 	import jim.checker.errors as jerrors
-	from .interpreter import top_level_evaluate
+	from .interpreter import top_level_evaluate, show_proof_state
 
 	match argv:
 		case [filename]:
@@ -25,6 +25,7 @@ def main(argv):
 						print(jerrors.format_error(e), file=sys.stderr)
 						proof_correct = False
 
+				show_proof_state()
 				if proof_correct:
 					print("Proof is valid.")
 				else:

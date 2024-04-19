@@ -98,42 +98,43 @@ class ProofLevel:
 				self.assumptions.append(assumption)
 				self.results.append(ProofLevel.Result(assumption, assumed=True))
 
-	def known_results(self):
+	def known_results(self, current_only=False):
 		level = self
 		while True:
 			for result in reversed(level.results):
 				yield result
 			level = level.previous
-			if level is None:
+			if current_only or level is None:
 				break
 
-	def lookup(self, key, to_key):
+	def lookup(self, key, to_key, current_only=False):
 		"""
 		Checks all previous results mapped by to_key for equality against key.
 		"""
-		for result in self.known_results():
+		for result in self.known_results(current_only=current_only):
 			if key == to_key(result):
 				return result
 		raise KeyError
 
-	def lookup_name(self, name):
+	def lookup_name(self, name, current_only=False):
 		"""Looks up a named result."""
 		try:
-			return self.lookup(name, lambda r: r.name)
+			return self.lookup(name, lambda r: r.name, current_only=current_only)
 		except KeyError:
 			raise UnknownNamedResultError(name) from None
 
-	def is_known(self, formula):
+	def is_known(self, formula, current_only=False):
 		"""Looks up the formula among known results."""
 		try:
-			self.lookup(formula, lambda r: r.formula)
+			self.lookup(formula, lambda r: r.formula, current_only=current_only)
 			return True
 		except KeyError:
 			return False
 
-	def is_proven(self, formula):
+	def is_proven(self, formula, current_only=False):
 		try:
-			return not self.lookup(formula, lambda r: r.formula).assumed
+			return not self.lookup(
+					formula, lambda r: r.formula, current_only=current_only).assumed
 		except KeyError:
 			return False
 
@@ -168,6 +169,22 @@ def init_frame_builtins(frame):
 
 top_frame = Stackframe(None, "base frame", ProofLevel(None))
 init_frame_builtins(top_frame)
+
+
+import sys
+
+def show_proof_state(frame=None, title=""):
+	if frame is None:
+		frame = top_frame
+	to_stderr = partial(print, file=sys.stderr)
+	to_stderr(format(title, "=^60"))
+	to_stderr("| FORMULA                                | NAME        |AS?|")
+	for result in frame.proof_level.known_results():
+		formula = result.formula
+		name = "" if result.name is None else result.name
+		assumed = " X " if result.assumed else "   "
+		to_stderr(f"| {result.formula!s:<39}| {name:<12}|{assumed}|")
+	to_stderr(60 * "=")
 
 
 def top_level_evaluate(form):

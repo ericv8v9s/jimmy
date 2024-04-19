@@ -87,24 +87,12 @@ class MarkResult(Execution):
 symbol_table["mark"] = MarkResult()
 
 
-import sys
-def _show_proof_state(frame, title=""):
-		to_stderr = partial(print, file=sys.stderr)
-		to_stderr(format(title, "=^60"))
-		to_stderr("| FORMULA                                | NAME        |AS?|")
-		for result in frame.proof_level.known_results():
-			formula = result.formula
-			name = "" if result.name is None else result.name
-			assumed = " X " if result.assumed else "   "
-			to_stderr(f"| {result.formula!s:<39}| {name:<12}|{assumed}|")
-		to_stderr(60 * "=")
-
 class ShowProofState(Execution):
 	def __init__(self):
 		super().__init__(["id"])
 
 	def evaluate(self, frame):
-		_show_proof_state(frame, f" Known results: {frame['id']} ")
+		interpreter.show_proof_state(frame, f" Known results: {frame['id']} ")
 
 symbol_table["show_proof_state"] = ShowProofState()
 
