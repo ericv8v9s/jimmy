@@ -4,7 +4,7 @@ from pydantic.dataclasses import dataclass
 
 import jim.checker.builtins as jbuiltins
 import jim.checker.execution as jexec
-from .errors import *
+import jim.checker.errors as jerrors
 from jim.ast import *
 from jim.ast import filter_tree
 from jim.debug import debug
@@ -85,7 +85,18 @@ class ProofLevel:
 	def __init__(self, previous_level):
 		self.previous = previous_level
 		self.results: list[Result] = []
+		self.assumptions = []
 		self.last_form = None
+
+	def introduce_assumptions(self, *assumptions):
+		if self.last_form is not None:
+			raise jerrors.JimmyError(top_frame.call_form,
+					"Assumption must be introduced at start of proof.")
+		for assumption in assumptions:
+			if not self.is_known(assumption):
+				debug(f"ASSUMPTION INTR.: {assumption=}")
+				self.assumptions.append(assumption)
+				self.results.append(ProofLevel.Result(assumption, assumed=True))
 
 	def known_results(self):
 		level = self
@@ -126,8 +137,8 @@ class ProofLevel:
 		except KeyError:
 			return False
 
-	def add_result(self, validated_form, assumed=False):
-		result = ProofLevel.Result(validated_form, assumed=assumed)
+	def add_result(self, validated_form):
+		result = ProofLevel.Result(validated_form)
 		self.results.append(result)
 
 	def mark_last_result(self, name):
@@ -136,16 +147,20 @@ class ProofLevel:
 		self.results[-1] = result
 
 
+_LAST_LEVEL = object()
+
 @contextmanager
-def push_new_proof_level():
-	previous = top_frame.proof_level
-	top_frame.proof_level = ProofLevel(previous)
+def push_proof_level(based_on=_LAST_LEVEL):
+	if based_on is _LAST_LEVEL:
+		based_on = top_frame.proof_level
+	old = top_frame.proof_level
+	top_frame.proof_level = ProofLevel(based_on)
 	try:
 		yield top_frame.proof_level
 	except:
 		raise
 	finally:
-		top_frame.proof_level = previous
+		top_frame.proof_level = old
 
 
 def init_frame_builtins(frame):
@@ -161,17 +176,11 @@ def top_level_evaluate(form):
 	# purge comments
 	form = filter_tree(form, lambda f: not isinstance(f, Comment))
 	if form is None:
-		return True
+		return
 
-	try:
-		evaluate(form)
-		if not isinstance(form, ProofAnnotation):
-			top_frame.proof_level.last_form = form
-		return True
-	except JimmyError as e:
-		import sys
-		print(format_error(e), file=sys.stderr)
-		return False
+	evaluate(form)
+	if not isinstance(form, ProofAnnotation):
+		top_frame.proof_level.last_form = form
 
 
 def evaluate(obj):
@@ -216,7 +225,7 @@ def invoke(compound):
 	argv = compound[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError(compound, "Invocation target is invalid.")
+		raise jerrors.JimmyError(compound, "Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
 		argv = [evaluate(arg) for arg in argv]

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from jim.debug import debug
 
 
 class _ValueMixin:
@@ -108,6 +109,14 @@ class Comment(_ValueMixin, CodeObject):
 		return ";" + self.value + "\\n"
 
 
+def is_leaf(node):
+	try:
+		iter(node)
+		return False
+	except TypeError:
+		return True
+
+
 def filter_tree(tree, criteria):
 	"""
 	Filter for nodes meeting the criteria.
@@ -127,14 +136,7 @@ def filter_tree(tree, criteria):
 	def _filter_tree(tree):
 		if not criteria(tree):
 			return _REMOVED
-
-		try:
-			iter(tree)
-			is_leaf = False
-		except TypeError:
-			is_leaf = True
-
-		if is_leaf:
+		if is_leaf(tree):
 			return tree
 		else:
 			return type(tree)(filter(not_removed, map(_filter_tree, tree)))
@@ -143,6 +145,25 @@ def filter_tree(tree, criteria):
 	if filtered is _REMOVED:
 		return None
 	return filtered
+
+
+def tree_equal(u, v, eq=lambda u, v: u == v):
+	#debug(f"tree_equal: eq({u=!s}, {v=!s})={eq(u,v)}")
+	if eq(u, v):
+		return True
+
+	is_u_leaf = is_leaf(u)
+	is_v_leaf = is_leaf(v)
+
+	if is_u_leaf != is_v_leaf:
+		return False
+	if is_u_leaf:  # Both leaves, but already not equal.
+		return False
+
+	try:
+		return all(tree_equal(x, y, eq) for x, y in zip(u, v, strict=True))
+	except ValueError:
+		return False
 
 
 __all__ = [x.__name__ for x in [

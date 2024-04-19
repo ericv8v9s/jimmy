@@ -37,8 +37,10 @@ class UnknownNamedResultError(JimmyError):
 			jim.ast.Symbol(name), "Symbol does not name a previous result.")
 
 class RuleFormMismatchError(JimmyError):
-	def __init__(self, form, last_form):
-		super().__init__(form, f"Cannot apply rule to form: {last_form}")
+	def __init__(self, form, last_form, msg=None):
+		if msg is None:
+			msg = f"Cannot apply rule to form: {last_form}"
+		super().__init__(form, msg)
 
 class InvalidRuleApplicationError(JimmyError):
 	def __init__(self, form, msg="Failed to produce the specified formula."):

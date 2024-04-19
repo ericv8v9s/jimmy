@@ -83,7 +83,7 @@ def compound(ast):
 def compound(ast, *children):
 	idx = 0
 	for s in children:
-		debug(f"GRAMMAR: {s!r} == {ast[idx]!r}")
+		debug(f"GRAMMAR: {s!r} == {ast[idx] if idx < len(ast) else None!r}")
 		if isinstance(s, repeat):
 			while idx < len(ast) and s.component.check(ast[idx]):
 				idx += 1
