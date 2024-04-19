@@ -1,13 +1,27 @@
 import jim.executor.execution as jexec
 import jim.executor.interpreter as interpreter
 import jim.executor.errors as errors
-from jim.syntax import *
+from jim.ast import *
 
 
+# TODO make this immutable (outside this module)
+symbol_table = {
+	"true": True,
+	"false": False
+}
+
+def symbol_table_entry(name):
+	def reg_symbol(cls):
+		symbol_table[name] = cls()
+		return cls
+	return reg_symbol
+
+
+@symbol_table_entry("nil")
 class Nil:
 	def __str__(self):
 		return "nil"
-nil = Nil()
+nil = symbol_table["nil"]
 
 
 def _truthy(v):
@@ -15,7 +29,7 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
-	return CompoundForm([Symbol("progn")] + forms)
+	return CompoundForm([Symbol("progn"), *forms])
 
 
 def _require_ints(values):
@@ -31,6 +45,7 @@ def product(values):  # just like the builtin sum
 	return prod
 
 
+@symbol_table_entry("assert")
 class Assertion(jexec.Function):
 	def __init__(self):
 		super().__init__(["expr"])
@@ -39,6 +54,7 @@ class Assertion(jexec.Function):
 			raise errors.AssertionError(frame["expr"])
 		return nil
 
+@symbol_table_entry("assign")
 class Assignment(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
@@ -60,6 +76,7 @@ class Assignment(jexec.Execution):
 
 # This is the lambda form.
 # There is no defun form. A defun is (assign xxx (func ...))
+@symbol_table_entry("func")
 class Lambda(jexec.Execution):
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
@@ -79,6 +96,7 @@ class Lambda(jexec.Execution):
 		return jexec.JimmyFunction(param_spec, frame["body"])
 
 
+@symbol_table_entry("progn")
 class Progn(jexec.Execution):
 	def __init__(self):
 		super().__init__([["forms"]])
@@ -92,6 +110,7 @@ class Progn(jexec.Execution):
 		return result
 
 
+@symbol_table_entry("cond")
 class Conditional(jexec.Macro):
 	def __init__(self):
 		# (cond
@@ -111,6 +130,7 @@ class Conditional(jexec.Macro):
 		return nil
 
 
+@symbol_table_entry("while")
 class WhileLoop(jexec.Execution):
 	def __init__(self):
 		super().__init__(["test-form", ["body"]])
@@ -124,6 +144,7 @@ class WhileLoop(jexec.Execution):
 			return result
 
 
+@symbol_table_entry("+")
 class Addition(jexec.Function):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -133,6 +154,7 @@ class Addition(jexec.Function):
 		return sum(terms)
 
 
+@symbol_table_entry("-")
 class Subtraction(jexec.Function):
 	def __init__(self):
 		super().__init__(["n", ["terms"]])
@@ -146,6 +168,7 @@ class Subtraction(jexec.Function):
 		return n - sum(terms)
 
 
+@symbol_table_entry("*")
 class Multiplication(jexec.Function):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -155,6 +178,7 @@ class Multiplication(jexec.Function):
 		return product(terms)
 
 
+@symbol_table_entry("/")
 class Division(jexec.Function):
 	def __init__(self):
 		super().__init__(["n", ["terms"]])
@@ -171,6 +195,7 @@ class Division(jexec.Function):
 			raise errors.DivideByZeroError(frame.call_form)
 
 
+@symbol_table_entry("%")
 class Modulo(jexec.Function):
 	def __init__(self):
 		super().__init__(["x", "y"])
@@ -193,6 +218,7 @@ def _chain_relation(relation_pred, a, b, more):
 		return result
 
 
+@symbol_table_entry("=")
 class Equality(jexec.Function):
 	def __init__(self):
 		super().__init__(["a", "b", ["more"]])
@@ -201,6 +227,7 @@ class Equality(jexec.Function):
 			lambda a, b: a == b, frame["a"], frame["b"], frame["more"])
 
 
+@symbol_table_entry("<")
 class LessThan(jexec.Function):
 	def __init__(self):
 		super().__init__(["a", "b", ["more"]])
@@ -209,6 +236,7 @@ class LessThan(jexec.Function):
 			lambda a, b: a < b, frame["a"], frame["b"], frame["more"])
 
 
+@symbol_table_entry(">")
 class GreaterThan(jexec.Function):
 	def __init__(self):
 		super().__init__(["a", "b", ["more"]])
@@ -217,6 +245,7 @@ class GreaterThan(jexec.Function):
 			lambda a, b: a > b, frame["a"], frame["b"], frame["more"])
 
 
+@symbol_table_entry("<=")
 class LessEqual(jexec.Function):
 	def __init__(self):
 		super().__init__(["a", "b", ["more"]])
@@ -225,6 +254,7 @@ class LessEqual(jexec.Function):
 			lambda a, b: a <= b, frame["a"], frame["b"], frame["more"])
 
 
+@symbol_table_entry(">=")
 class GreaterEqual(jexec.Function):
 	def __init__(self):
 		super().__init__(["a", "b", ["more"]])
@@ -233,6 +263,9 @@ class GreaterEqual(jexec.Function):
 			lambda a, b: a >= b, frame["a"], frame["b"], frame["more"])
 
 
+# Empty conjunction is vacuously true.
+# (and) always holds as an axiom.
+@symbol_table_entry("and")
 class Conjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -246,6 +279,11 @@ class Conjunction(jexec.Execution):
 		return result
 
 
+# Empty disjunction is vacuously false.
+# (or ...) is true iff any argument is true;
+# an empty (or) has no argument which is true.
+# (not (or)) always holds as an axiom.
+@symbol_table_entry("or")
 class Disjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -258,6 +296,7 @@ class Disjunction(jexec.Execution):
 		return False
 
 
+@symbol_table_entry("not")
 class Negation(jexec.Function):
 	def __init__(self):
 		super().__init__(["p"])
@@ -265,6 +304,7 @@ class Negation(jexec.Function):
 		return not _truthy(frame["p"])
 
 
+@symbol_table_entry("print")
 class Print(jexec.Function):
 	def __init__(self):
 		super().__init__(["msg"])
@@ -273,12 +313,14 @@ class Print(jexec.Function):
 		return nil
 
 
+@symbol_table_entry("list")
 class List(jexec.Function):
 	def __init__(self):
 		super().__init__([["elements"]])
 	def evaluate(self, frame):
 		return frame["elements"]
 
+@symbol_table_entry("list-get")
 class ListGet(jexec.Function):
 	def __init__(self):
 		super().__init__(["lst", "idx"])
@@ -288,6 +330,7 @@ class ListGet(jexec.Function):
 			raise errors.IndexError(frame.call_form)
 		return lst[idx]
 
+@symbol_table_entry("list-set")
 class ListSet(jexec.Function):
 	def __init__(self):
 		super().__init__(["lst", "idx", "val"])
@@ -299,6 +342,7 @@ class ListSet(jexec.Function):
 		return val
 
 
+@symbol_table_entry("len")
 class Length(jexec.Function):
 	def __init__(self):
 		super().__init__(["sequence"])

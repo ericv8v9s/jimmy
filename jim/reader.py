@@ -3,13 +3,14 @@ from functools import wraps
 from dataclasses import dataclass
 from typing import Any
 
-from jim.syntax import *
+from jim.ast import *
 
 
 _SPACES = set(whitespace)
 _DIGITS = set(digits)
 _LETTERS = set(ascii_letters)
 _PUNCTS = set('''!#$%&*+-/:<=>?@\^_~''')
+_SEPARATORS = set("()[]") | _SPACES
 _IDENT_CHARS = _LETTERS | _PUNCTS | _DIGITS
 
 
@@ -173,6 +174,10 @@ def parse_integer(chars):
 
 	for c in chars:
 		if c not in _DIGITS:
+			# Digits ended. Only accept as integer if we ended on a separator
+			# (i.e., not in the middle of a weird identifier).
+			if c not in _SEPARATORS:
+				return ParseResult(False)
 			break
 		num_str.append(c)
 	return ParseResult(True, Integer(int("".join(num_str))), -1)

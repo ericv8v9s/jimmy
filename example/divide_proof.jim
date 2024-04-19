@@ -2,55 +2,81 @@
 (assign x 7)
 (assign y 2)
 (assert (not (= y 0)))
-[assert (not (= y 0))]  ; nothing is ever auto-inferred
-; assert in brackets refers to the rule of assertion
+[assert (not (= y 0))]
 
 [=intr (= x x)]
 (assign r x)
-[assign (= x r)]  ; rule of assignment; substitute r for x gives (= x x)
-[mark xr1]  ; marks last result as "xr1"
+[assign (= x r)]  [mark lr]
 
-; TODO arithmetic inference rules
-[0+ (= r (+ r 0))]  ; rule of additive identity
-[mark xr2]
-; substitute xr2 (which must be of form (= a b)) into xr1: r -> (+ r 0)
-[(sub xr2 xr1) (= x (+ r 0))]
-[mark xr3]
+[[sub [add0 (= r (+ r 0))] lr] (= x (+ r 0))]  [mark lr]
 
-[0* (= 0 (* y 0))]  ; rule of multiply by zero
-[mark y0]
-[(sub y0 xr3) (= x (+ r (* y 0)))]
-[mark xr4]
+[[sub [mult0 (= 0 (* 0 y))] lr] (= x (+ r (* 0 y)))]  [mark lr]
 
 [=intr (= 0 0)]
 (assign q 0)
 [assign (= 0 q)]
-; every formula involving q not explicitly shown is invalidated
-[(sub (= 0 q) xr4) (= x (+ r (* y q)))]  [mark invar]  ; loop invariant
+[[sub (= 0 q) lr] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
 
-(while (<= y r)  [assume (<= y r)]  ; not used; required by form
-	; begins sub-proof
-	; TODO find a way to derive this
-	[(= x (+ (- r y) y (* y q)))]
+
+(while (<= y r)
+	[assume (= x (+ r (* q y)))]  [mark invar]
+	; To handle (assign r (- r y),
+	; we need to first prove something with (- r y) in it.
+	[show_proof_state begin-while]
+
+	[[sub [add0 (= r (+ r 0))] invar] (= x (+ (+ r 0) (* q y)))]  [mark invar]
+	[[sub [subt0 (= 0 (- y y))] invar]
+			(= x (+ (+ r (- y y)) (* q y)))]  [mark invar]
+	[[sub [-+ (= (- y y) (+ y (- y)))] invar]
+		(= x (+ (+ r (+ y (- y))) (* q y)))]  [mark invar]
+	[+assoc (= (+ (+ r (+ y (- y))) (* q y)) (+ r y (- y) (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ r y (- y) (* q y)))]  [mark invar]
+
+	[+comm (= (+ r y (- y) (* q y)) (+ r (- y) y (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ r (- y) y (* q y)))]  [mark invar]
+
+	[+assoc (= (+ r (- y) y (* q y)) (+ (+ r (- y)) y (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ (+ r (- y)) y (* q y)))]  [mark invar]
+
+	[-+ (= (- r y) (+ r (- y)))]
+	[=flip (= (+ r (- y)) (- r y))]  [mark lr]
+	[[sub lr invar] (= x (+ (- r y) y (* q y)))]  [mark invar]
+
+	[show_proof_state update-r]
 
 	(assign r (- r y))
-	[assign (= x (+ r y (* y q)))]  [mark crit-b1]
-	[+assoc (= (+ r y (* y q)) (+ r (+ y (* y q))))]  [mark crit-b2]
-	[*distr (= (+ y (* y q)) (* y (+ q 1)))]  [mark crit-b3]
-	[(sub crit-b2 crit-b1) (= x (+ r (+ y (* y q))))]  [mark crit-b4]
-	[(sub crit-b3 crit-b4) (= x (+ r (* y (+ q 1))))]
-	(assign q (+ q 1))
-	; we have loop invariant again [(= x (+ r (* y q)))]
-	[assign invar])
+	[assign (= x (+ r y (* q y)))]  [mark crit]
+	; derive invar (= x (+ r (* (+ q 1) y))) from here
 
-; We can examine the set of results known before the form and the form itself
-; The previous while form must have a single sub-proof,
-; the last formula of which is considered the invariant
-; and which must be shown to be true before the while form.
+	[[sub [mult1 (= y (* y 1))] crit]
+			(= x (+ r (* y 1) (* q y)))]  [mark crit]
+	[[sub [*comm (= (* q y) (* y q))] crit]
+			(= x (+ r (* y 1) (* y q)))]  [mark crit]
+
+	[+assoc (= (+ r (* y 1) (* y q)) (+ r (+ (* y 1) (* y q))))]  [mark lr]
+	[[sub lr crit] (= x (+ r (+ (* y 1) (* y q))))]  [mark crit]
+
+	[*distr (= (* y (+ 1 q)) (+ (* y 1) (* y q)))]
+	[=flip (= (+ (* y 1) (* y q)) (* y (+ 1 q)))]  [mark lr]
+	[[sub lr crit] (= x (+ r (* y (+ 1 q))))]  [mark crit]
+
+	[[sub [+comm (= (+ 1 q) (+ q 1))] crit]
+			(= x (+ r (* y (+ q 1))))] [mark crit]
+
+	[show_proof_state update-q]
+
+	(assign q (+ q 1))
+	[assign (= x (+ r (* y q)))]  [mark invar]
+	[[sub [*comm (= (* y q) (* q y))] invar]
+			(= x (+ r (* q y)))]  ; we have loop invariant again
+	[show_proof_state end-while])
+
+[show_proof_state before-while]
+
 [while (and
 	(not (<= y r))  ; negation of loop condition
 	; this must be known before the loop and shown to be maintained by the loop
-	(= x (+ r (* y q))))]
+	(= x (+ r (* q y))))]
 
 ; OUTPUT
 (print q)
