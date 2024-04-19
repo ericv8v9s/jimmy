@@ -6,24 +6,16 @@
 
 [=intr (= x x)]
 (assign r x)
-[assign (= x r)]
-[mark xr1]
+[assign (= x r)]  [mark lr]
 
-[add0 (= r (+ r 0))]
-[mark xr2]
-; substitute xr2 (which must be of form (= a b)) into xr1: r -> (+ r 0)
-[[sub xr2 xr1] (= x (+ r 0))]
-[mark xr3]
+[[sub [add0 (= r (+ r 0))] lr] (= x (+ r 0))]  [mark lr]
 
-[mult0 (= 0 (* 0 y))]
-[mark y0]
-[[sub y0 xr3] (= x (+ r (* 0 y)))]
-[mark xr4]
+[[sub [mult0 (= 0 (* 0 y))] lr] (= x (+ r (* 0 y)))]  [mark lr]
 
 [=intr (= 0 0)]
 (assign q 0)
 [assign (= 0 q)]
-[[sub (= 0 q) xr4] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
+[[sub (= 0 q) lr] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
 
 
 (while (<= y r)
@@ -37,18 +29,20 @@
 			(= x (+ (+ r (- y y)) (* q y)))]  [mark invar]
 	[[sub [-+ (= (- y y) (+ y (- y)))] invar]
 		(= x (+ (+ r (+ y (- y))) (* q y)))]  [mark invar]
-	[+assoc (= (+ (+ r (+ y (- y))) (* q y)) (+ r y (- y) (* q y)))]  [mark tmp]
-	[[sub tmp invar] (= x (+ r y (- y) (* q y)))]  [mark invar]
+	[+assoc (= (+ (+ r (+ y (- y))) (* q y)) (+ r y (- y) (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ r y (- y) (* q y)))]  [mark invar]
 
-	[+comm (= (+ r y (- y) (* q y)) (+ r (- y) y (* q y)))]  [mark tmp]
-	[[sub tmp invar] (= x (+ r (- y) y (* q y)))]  [mark invar]
+	[+comm (= (+ r y (- y) (* q y)) (+ r (- y) y (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ r (- y) y (* q y)))]  [mark invar]
 
-	[+assoc (= (+ r (- y) y (* q y)) (+ (+ r (- y)) y (* q y)))]  [mark tmp]
-	[[sub tmp invar] (= x (+ (+ r (- y)) y (* q y)))]  [mark invar]
+	[+assoc (= (+ r (- y) y (* q y)) (+ (+ r (- y)) y (* q y)))]  [mark lr]
+	[[sub lr invar] (= x (+ (+ r (- y)) y (* q y)))]  [mark invar]
 
 	[-+ (= (- r y) (+ r (- y)))]
-	[=flip (= (+ r (- y)) (- r y))]  [mark tmp]
-	[[sub tmp invar] (= x (+ (- r y) y (* q y)))]  [mark invar]
+	[=flip (= (+ r (- y)) (- r y))]  [mark lr]
+	[[sub lr invar] (= x (+ (- r y) y (* q y)))]  [mark invar]
+
+	[show_proof_state update-r]
 
 	(assign r (- r y))
 	[assign (= x (+ r y (* q y)))]  [mark crit]
@@ -59,15 +53,17 @@
 	[[sub [*comm (= (* q y) (* y q))] crit]
 			(= x (+ r (* y 1) (* y q)))]  [mark crit]
 
-	[+assoc (= (+ r (* y 1) (* y q)) (+ r (+ (* y 1) (* y q))))]  [mark tmp]
-	[[sub tmp crit] (= x (+ r (+ (* y 1) (* y q))))]  [mark crit]
+	[+assoc (= (+ r (* y 1) (* y q)) (+ r (+ (* y 1) (* y q))))]  [mark lr]
+	[[sub lr crit] (= x (+ r (+ (* y 1) (* y q))))]  [mark crit]
 
 	[*distr (= (* y (+ 1 q)) (+ (* y 1) (* y q)))]
-	[=flip (= (+ (* y 1) (* y q)) (* y (+ 1 q)))]  [mark tmp]
-	[[sub tmp crit] (= x (+ r (* y (+ 1 q))))]  [mark crit]
+	[=flip (= (+ (* y 1) (* y q)) (* y (+ 1 q)))]  [mark lr]
+	[[sub lr crit] (= x (+ r (* y (+ 1 q))))]  [mark crit]
 
 	[[sub [+comm (= (+ 1 q) (+ q 1))] crit]
 			(= x (+ r (* y (+ q 1))))] [mark crit]
+
+	[show_proof_state update-q]
 
 	(assign q (+ q 1))
 	[assign (= x (+ r (* y q)))]  [mark invar]

@@ -88,55 +88,73 @@ class ProofLevel:
 		self.assumptions = []
 		self.last_form = None
 
+	def copy(self):
+		previous = self.previous
+		if previous is not None:
+			previous = previous.copy()
+		cp = ProofLevel(previous)
+		cp.results = self.results[:]
+		cp.assumptions = self.assumptions[:]
+		cp.last_form = self.last_form
+		return cp
+
 	def introduce_assumptions(self, *assumptions):
 		if self.last_form is not None:
 			raise jerrors.JimmyError(top_frame.call_form,
 					"Assumption must be introduced at start of proof.")
 		for assumption in assumptions:
-			if not self.is_known(assumption):
-				debug(f"ASSUMPTION INTR.: {assumption=}")
-				self.assumptions.append(assumption)
-				self.results.append(ProofLevel.Result(assumption, assumed=True))
+			debug(f"ASSUMPTION INTR.: {assumption=}")
+			self.assumptions.append(assumption)
+			self.results.append(ProofLevel.Result(assumption, assumed=True))
 
-	def known_results(self, current_only=False):
+	def known_results(self):
 		level = self
 		while True:
 			for result in reversed(level.results):
 				yield result
 			level = level.previous
-			if current_only or level is None:
+			if level is None:
 				break
 
-	def lookup(self, key, to_key, current_only=False):
+	def lookup(self, key, to_key):
 		"""
 		Checks all previous results mapped by to_key for equality against key.
 		"""
-		for result in self.known_results(current_only=current_only):
+		for result in self.known_results():
 			if key == to_key(result):
 				return result
 		raise KeyError
 
-	def lookup_name(self, name, current_only=False):
+	def lookup_name(self, name):
 		"""Looks up a named result."""
 		try:
-			return self.lookup(name, lambda r: r.name, current_only=current_only)
+			return self.lookup(name, lambda r: r.name)
 		except KeyError:
 			raise UnknownNamedResultError(name) from None
 
-	def is_known(self, formula, current_only=False):
+	def is_known(self, formula):
 		"""Looks up the formula among known results."""
 		try:
-			self.lookup(formula, lambda r: r.formula, current_only=current_only)
+			self.lookup(formula, lambda r: r.formula)
 			return True
 		except KeyError:
 			return False
 
-	def is_proven(self, formula, current_only=False):
-		try:
-			return not self.lookup(
-					formula, lambda r: r.formula, current_only=current_only).assumed
-		except KeyError:
-			return False
+	def is_proven(self, formula):
+		for r in self.known_results():
+			if r.assumed:
+				continue
+			if r.formula == formula:
+				return True
+		return False
+
+	def invalidate(self, critera):
+		level = self
+		while True:
+			level.results = [r for r in level.results if not critera(r)]
+			level = level.previous
+			if level is None:
+				break
 
 	def add_result(self, validated_form):
 		result = ProofLevel.Result(validated_form)

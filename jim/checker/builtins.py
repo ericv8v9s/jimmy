@@ -197,7 +197,8 @@ def while_loop(frame, ast):
 	while_form = frame.proof_level.last_form
 	loop_cond = while_form[1]
 
-	with interpreter.push_proof_level(None) as pl:
+	proof_copy = frame.proof_level.copy()
+	with interpreter.push_proof_level() as pl:
 		pl.introduce_assumptions(loop_cond)
 		for form in while_form.children[2:]:
 			interpreter.top_level_evaluate(form)
@@ -213,11 +214,11 @@ def while_loop(frame, ast):
 		debug(f"while: expected invar.: {invar!s}")
 
 		# Ensure invariant maintained within loop.
-		if not pl.is_proven(invar):
+		if not pl.is_known(invar):
 			raise jerrors.JimmyError(invar, "Invariant not maintained.")
 
 	# Ensure invariant known before loop.
-	if not frame.proof_level.is_known(invar):
+	if not proof_copy.is_known(invar):
 		raise jerrors.JimmyError(invar, "Invariant not established before loop.")
 
 	return ast == CompoundForm([Symbol("and"),
