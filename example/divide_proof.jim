@@ -1,8 +1,7 @@
 ; INPUT
 (assign x 7)
 (assign y 2)
-(assert (not (= y 0)))
-[assert (not (= y 0))]
+(assert (and (> x 0) (> y 0)))
 
 [=intr (= x x)]
 (assign r x)
@@ -15,13 +14,11 @@
 [=intr (= 0 0)]
 (assign q 0)
 [assign (= 0 q)]
-[[sub (= 0 q) lr] (= x (+ r (* q y)))]  [mark invar]  ; loop invariant
+[[sub (= 0 q) lr] (= x (+ r (* q y)))]  [mark invar]
 
 
 (while (<= y r)
 	[assume (= x (+ r (* q y)))]  [mark invar]
-	; To handle (assign r (- r y),
-	; we need to first prove something with (- r y) in it.
 	[show_proof_state begin-while]
 
 	[[sub [add0 (= r (+ r 0))] invar] (= x (+ (+ r 0) (* q y)))]  [mark invar]
@@ -46,7 +43,6 @@
 
 	(assign r (- r y))
 	[assign (= x (+ r y (* q y)))]  [mark crit]
-	; derive invar (= x (+ r (* (+ q 1) y))) from here
 
 	[[sub [mult1 (= y (* y 1))] crit]
 			(= x (+ r (* y 1) (* q y)))]  [mark crit]
@@ -73,10 +69,7 @@
 
 [show_proof_state before-while]
 
-[while (and
-	(not (<= y r))  ; negation of loop condition
-	; this must be known before the loop and shown to be maintained by the loop
-	(= x (+ r (* q y))))]
+[while (and (not (<= y r)) (= x (+ r (* q y))))]
 
 ; OUTPUT
 (print q)
