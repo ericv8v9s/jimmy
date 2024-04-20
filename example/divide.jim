@@ -1,6 +1,7 @@
 ; INPUT
 (assign x 7)
 (assign y 2)
+(assert (and (> x 0) (> y 0)))
 
 (assign r x)
 (assign q 0)

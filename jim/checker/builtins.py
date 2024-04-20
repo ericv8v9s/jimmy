@@ -111,7 +111,7 @@ class AssumptionIntroduction(Function):
 					"Rule must be applied at start of proof or sub-proof.")
 
 		frame.proof_level.introduce_assumptions(assumption)
-		return True
+		return assumption
 
 symbol_table["assume"] = AssumptionIntroduction()
 
