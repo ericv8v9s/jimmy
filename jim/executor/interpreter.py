@@ -84,7 +84,7 @@ def evaluate(obj):
 		case Symbol(value=name):
 			return top_frame.lookup(name)
 		case String(value=s):
-			return s
+			return s  # TODO should not evaluate to raw python object
 
 		case CompoundForm(children=forms):
 			if len(forms) == 0:

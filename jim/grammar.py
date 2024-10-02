@@ -95,8 +95,8 @@ def compound(ast, *children):
 
 
 assertion = compound(symbol("assert"), form)
-assignment = compound(symbol("assign"), symbol, form)
-function = compound(symbol("func"), compound, repeat(form))
+define = compound(symbol("def"), symbol, form)
+function = compound(symbol("fn"), compound, repeat(form))
 progn = compound(symbol("progn"), repeat(form))
 conditional = compound(symbol("cond"), repeat(compound(form, repeat(form))))
 implication = compound(symbol("imply"), form, form)

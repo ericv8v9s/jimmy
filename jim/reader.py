@@ -1,5 +1,5 @@
 from string import whitespace, digits, ascii_letters
-from functools import wraps
+from functools import wraps, cache
 from dataclasses import dataclass
 from typing import Any
 
@@ -84,6 +84,7 @@ def _wrap_char_source(get_next_char):
 	return char_gen()
 
 
+@cache
 def _lookahead1(c):
 	@_component_parser
 	def lookahead(chars):
@@ -192,9 +193,9 @@ def parse_string(chars):
 	for c in chars:
 		if c == '"':
 			break
-		if c == '//':  # escape
+		if c == '\\':  # escape
 			c = next(chars)
-		elif c == "":
+		if c == "":
 			raise ParseError("Unterminated string literal.")
 		s.append(c)
 	return ParseResult(True, String("".join(s)))

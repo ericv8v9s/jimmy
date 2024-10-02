@@ -158,8 +158,7 @@ def _substitute(a, b, tree):
 	except TypeError:  # tree not iterable; it's a leaf
 		return tree
 
-@rule_of_inference("assign", following=gmr.assignment)
-def assignment(frame, ast):
+@rule_of_inference("def", following=gmr.define)
 	last_form = frame.proof_level.last_form
 	lhs, rhs = last_form[1], last_form[2]
 

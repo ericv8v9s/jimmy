@@ -125,7 +125,7 @@ def filter_tree(tree, criteria):
 	Tree nodes are not mutated: the modified tree are rebuilt bottom up.
 	To do so, all non-leaf nodes must allow construction by passing an
 	iterable of children.
-	If the root matches the criteria, None is returned.
+	If the root fails the criteria, None is returned.
 	"""
 
 	_REMOVED = object()

@@ -54,7 +54,7 @@ class Assertion(jexec.Function):
 			raise errors.AssertionError(frame["expr"])
 		return nil
 
-@symbol_table_entry("assign")
+@symbol_table_entry("def")
 class Assignment(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
@@ -75,8 +75,8 @@ class Assignment(jexec.Execution):
 
 
 # This is the lambda form.
-# There is no defun form. A defun is (assign xxx (func ...))
-@symbol_table_entry("func")
+# There is no defun form. A defun is (def xxx (func ...))
+@symbol_table_entry("fn")
 class Lambda(jexec.Execution):
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
