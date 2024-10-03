@@ -79,12 +79,10 @@ def evaluate(obj):
 	#print(f"DEBUG: evaluate( {obj} )")
 
 	match obj:
-		case Integer(value=v):
-			return v
+		case Integer() | String():
+			return obj
 		case Symbol(value=name):
 			return top_frame.lookup(name)
-		case String(value=s):
-			return s  # TODO should not evaluate to raw python object
 
 		case CompoundForm(children=forms):
 			if len(forms) == 0:
@@ -96,6 +94,7 @@ def evaluate(obj):
 			return None
 
 		case _:
+			assert False  # should never see raw python object
 			# consider it to be a raw object already evaluated
 			return obj
 
