@@ -6,7 +6,7 @@ def main(argv):
 	match argv:
 		case []:  # interactive mode
 			while True:
-				print("IN: ", end="", flush=True)
+				print("<- ", end="", flush=True)
 
 				try:
 					parsed = reader.parse(lambda: sys.stdin.read(1))
@@ -19,7 +19,7 @@ def main(argv):
 
 				result = top_level_evaluate(parsed)
 				if result is not None:
-					print("OUT:", result, flush=True)
+					print("->", result, flush=True)
 
 		case [filename]:
 			if filename == "-":

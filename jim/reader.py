@@ -22,7 +22,7 @@ class ParseError(Exception):
 		self.msg = msg
 		self.line = _line_num
 	def __str__(self):
-		return f"Parsing error on line {self.line}: {self.msg}"
+		return f"Parse error on line {self.line}: {self.msg}"
 
 
 _buffer = []
