@@ -9,8 +9,8 @@ from jim.ast import *
 _SPACES = set(whitespace)
 _DIGITS = set(digits)
 _LETTERS = set(ascii_letters)
-_PUNCTS = set('''!#$%&*+-/:<=>?@\^_~''')
-_SEPARATORS = set("()[]") | _SPACES
+_PUNCTS = set(r'!#$%&*+-/:<=>?@\^_~')
+_SEPARATORS = set("()[]") | _SPACES | {""}
 _IDENT_CHARS = _LETTERS | _PUNCTS | _DIGITS
 
 
