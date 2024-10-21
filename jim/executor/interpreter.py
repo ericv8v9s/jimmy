@@ -65,58 +65,48 @@ def switch_stack(new_top_frame):
 		top_frame = saved
 
 
-def top_level_evaluate(form):
-	try:
-		return evaluate(form)
-	except JimmyError as e:
-		import sys
-		print(format_error(e), file=sys.stderr)
-
-
-def evaluate(obj):
+def evaluate(form):
 	"""Computes a value for the form parsed by reader."""
 
 	#print(f"DEBUG: evaluate( {obj} )")
 
-	match obj:
-		case Integer() | String():
-			return obj
+	match form:
+		case Integer() | String():  # These are self-evaluating.
+			return form
 		case Symbol(value=name):
 			return top_frame.lookup(name)
 
 		case CompoundForm(children=forms):
 			if len(forms) == 0:
 				return jimlang.nil
-			return invoke(obj)
+			return invoke(form)
 
 		case CodeObject():
 			# comments and proof annotations are noops
 			return None
 
 		case _:
-			assert False  # should never see raw python object
-			# consider it to be a raw object already evaluated
-			return obj
+			assert False  # We should never see raw python object.
 
 
-def invoke(compound):
-	execution = evaluate(compound[0])
-	argv = compound[1:]
+def invoke(compound_form):
+	execution = evaluate(compound_form[0])
+	args = compound_form[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError(compound, "Invocation target is invalid.")
+		raise JimmyError(compound_form, "Invocation target is invalid.")
 
 	if isinstance(execution, jexec.EvaluateIn):
-		argv = [evaluate(arg) for arg in argv]
+		args = [evaluate(arg) for arg in args]
 
-	#print(f"DEBUG: invoke: ({execution} {argv})")
+	#print(f"DEBUG: invoke: ({execution} {args})")
 
 	try:
-		matched_params = jexec.fill_parameters(execution.parameter_spec, argv)
+		matched_params = jexec.fill_parameters(execution.parameter_spec, args)
 	except jexec.ArgumentMismatchError:
-		raise ArgumentMismatchError(compound) from None
+		raise ArgumentMismatchError(compound_form) from None
 
-	with push_new_frame(compound) as f:
+	with push_new_frame(compound_form) as f:
 		f.symbol_table.update(matched_params)
 		result = execution.evaluate(f)
 

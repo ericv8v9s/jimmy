@@ -20,7 +20,7 @@ class _ValueMixin:
 		return f"{type(self).__name__}({self.value!r})"
 
 	def __str__(self):
-		return str(self.value)
+		return repr(self.value)
 
 
 class _CompoundMixin:
@@ -80,14 +80,15 @@ class Integer(Atom):
 	pass
 
 class Symbol(Atom):
-	pass
+	def __str__(self):
+		return self.value
 
 class String(Atom):
 	_str_escape = str.maketrans({
 		'"': '\\"',
 		"\\": "\\\\"})
 	def __str__(self):
-		return '"' + self.value.translate(_str_escape) + '"'
+		return '"' + self.value.translate(self._str_escape) + '"'
 
 
 class CompoundForm(_CompoundMixin, Form):

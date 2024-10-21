@@ -4,7 +4,7 @@ import jim.executor.builtins as jimlang
 
 class Execution:
 	def __init__(self, parameter_spec):
-		# (func (x y (rest)) body...)
+		# (fn (x y (rest)) body...)
 		self.parameter_spec = parameter_spec
 
 	def evaluate(self, stack_frame):

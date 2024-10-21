@@ -3,24 +3,27 @@ import jim.executor.interpreter as interpreter
 import jim.executor.errors as errors
 from jim.ast import *
 
+from functools import reduce
+import operator as ops
+
 
 # TODO make this immutable (outside this module)
 symbol_table = {
-	"true": True,
-	"false": False
+	"True": True,
+	"False": False
 }
 
-def symbol_table_entry(name):
+def builtin_symbol(name):
 	def reg_symbol(cls):
+		cls.__str__ = lambda self: name
 		symbol_table[name] = cls()
 		return cls
 	return reg_symbol
 
 
-@symbol_table_entry("nil")
+@builtin_symbol("nil")
 class Nil:
-	def __str__(self):
-		return "nil"
+	pass
 nil = symbol_table["nil"]
 
 
@@ -32,30 +35,58 @@ def _wrap_progn(forms):
 	return CompoundForm([Symbol("progn"), *forms])
 
 
-def _require_ints(values):
+def _unwrap_ints(values: list[Integer]) -> list[int]:
+	result = []
 	for n in values:
-		if not isinstance(n, int):
+		if not isinstance(n, Integer):
 			raise errors.JimmyError(n, "Value is not an integer.")
+		result.append(n.value)
+	return result
 
 
 def product(values):  # just like the builtin sum
-	prod = 1
-	for n in values:
-		prod *= n
-	return prod
+	return reduce(ops.mul, values, 1)
 
 
-@symbol_table_entry("assert")
-class Assertion(jexec.Function):
-	def __init__(self):
-		super().__init__(["expr"])
-	def evaluate(self, frame):
-		if not _truthy(frame["expr"]):
-			raise errors.AssertionError(frame["expr"])
-		return nil
+def flatten(coll):
+	def combine(result, next):
+		if isinstance(next, list):
+			result.extend(flatten(next))
+		else:
+			result.append(next)
+		return result
+	return reduce(combine, coll, [])
 
-@symbol_table_entry("def")
-class Assignment(jexec.Execution):
+
+def function_execution(*param_spec, conversion=lambda x: x):
+	"""
+	Decorates a function to be an executor.Function class,
+	passing through the param_spec to init and using the function
+	as the evaluate implementation.
+	A conversion function can be specified to be applied to the return value.
+	"""
+	def decorator(eval_impl):
+		def __init__(self):
+			super(type(self), self).__init__(param_spec)
+		def evaluate(self, frame):
+			args = {k: frame[k] for k in flatten(param_spec)}
+			return conversion(eval_impl(frame, **args))
+		# Creates a class of the same name, with Function as parent.
+		return type(evaluate.__name__, (jexec.Function,),
+				{ '__init__': __init__, 'evaluate': evaluate })
+	return decorator
+
+
+@builtin_symbol("assert")
+@function_execution("expr")
+def Assertion(_, expr):
+	if not _truthy(expr):
+		raise errors.AssertionError(expr)
+	return nil
+
+
+@builtin_symbol("def")
+class Definition(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
 
@@ -65,7 +96,7 @@ class Assignment(jexec.Execution):
 				lhs = symbol
 			case _:
 				raise errors.SyntaxError(
-						frame["lhs"], "Assignment target is not a variable.")
+						frame["lhs"], "Definition target is not a variable.")
 
 		with interpreter.switch_stack(frame.last_frame) as f:
 			rhs = interpreter.evaluate(frame["rhs"])
@@ -76,8 +107,8 @@ class Assignment(jexec.Execution):
 
 # This is the lambda form.
 # There is no defun form. A defun is (def xxx (func ...))
-@symbol_table_entry("fn")
-class Lambda(jexec.Execution):
+@builtin_symbol("fn")
+class Function(jexec.Execution):
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
 
@@ -96,7 +127,7 @@ class Lambda(jexec.Execution):
 		return jexec.JimmyFunction(param_spec, frame["body"])
 
 
-@symbol_table_entry("progn")
+@builtin_symbol("progn")
 class Progn(jexec.Execution):
 	def __init__(self):
 		super().__init__([["forms"]])
@@ -110,7 +141,7 @@ class Progn(jexec.Execution):
 		return result
 
 
-@symbol_table_entry("cond")
+@builtin_symbol("cond")
 class Conditional(jexec.Macro):
 	def __init__(self):
 		# (cond
@@ -130,7 +161,7 @@ class Conditional(jexec.Macro):
 		return nil
 
 
-@symbol_table_entry("while")
+@builtin_symbol("while")
 class WhileLoop(jexec.Execution):
 	def __init__(self):
 		super().__init__(["test-form", ["body"]])
@@ -144,128 +175,94 @@ class WhileLoop(jexec.Execution):
 			return result
 
 
-@symbol_table_entry("+")
-class Addition(jexec.Function):
-	def __init__(self):
-		super().__init__([["terms"]])
-	def evaluate(self, frame):
-		terms = frame["terms"]
-		_require_ints(terms)
-		return sum(terms)
+@builtin_symbol("+")
+@function_execution(["terms"], conversion=Integer)
+def Addition(_, terms):
+	terms = _unwrap_ints(terms)
+	return sum(terms)
 
 
-@symbol_table_entry("-")
-class Subtraction(jexec.Function):
-	def __init__(self):
-		super().__init__(["n", ["terms"]])
-	def evaluate(self, frame):
-		n = frame["n"]
-		terms = frame["terms"]
-		_require_ints(terms + [n])
+@builtin_symbol("-")
+@function_execution("n", ["terms"], conversion=Integer)
+def Subtraction(_, n, terms):
+	n, *terms = _unwrap_ints([n] + terms)
+	if len(terms) == 0:
+		return -n
+	return n - sum(terms)
 
+
+@builtin_symbol("*")
+@function_execution(["terms"], conversion=Integer)
+def Multiplication(_, terms):
+	terms = _unwrap_ints(terms)
+	return product(terms)
+
+
+@builtin_symbol("/")
+@function_execution("n", ["terms"], conversion=Integer)  # TODO implement rationals
+def Division(frame, n, terms):
+	n, *terms = _unwrap_ints([n] + terms)
+	try:
 		if len(terms) == 0:
-			return -n
-		return n - sum(terms)
+			return 1 // n
+		return n // product(terms)
+	except ZeroDivisionError:
+		raise errors.DivideByZeroError(frame.call_form)
 
 
-@symbol_table_entry("*")
-class Multiplication(jexec.Function):
-	def __init__(self):
-		super().__init__([["terms"]])
-	def evaluate(self, frame):
-		terms = frame["terms"]
-		_require_ints(terms)
-		return product(terms)
+@builtin_symbol("%")
+@function_execution("x", "y", conversion=Integer)
+def Modulo(frame, x, y):
+	x, y = _unwrap_ints([x, y])
+	if y == 0:
+		raise errors.DivideByZeroError(frame.call_form)
+	return x % y
 
 
-@symbol_table_entry("/")
-class Division(jexec.Function):
-	def __init__(self):
-		super().__init__(["n", ["terms"]])
-	def evaluate(self, frame):
-		n = frame["n"]
-		terms = frame["terms"]
-		_require_ints(terms + [n])
-
-		try:
-			if len(terms) == 0:
-				return 1 // n
-			return n // product(terms)
-		except ZeroDivisionError:
-			raise errors.DivideByZeroError(frame.call_form)
+def _transitive_property(pred, a, b, more):
+	result = pred(a, b)
+	for t in more:
+		if not result:
+			break
+		a = b
+		b = t
+		result = pred(a, b)
+	return result
 
 
-@symbol_table_entry("%")
-class Modulo(jexec.Function):
-	def __init__(self):
-		super().__init__(["x", "y"])
-	def evaluate(self, frame):
-		x, y = frame["x"], frame["y"]
-		_require_ints([x, y])
-		if y == 0:
-			raise errors.DivideByZeroError(frame.call_form)
-		return x % y
+@builtin_symbol("=")
+@function_execution("a", "b", ["more"])
+def Equality(_, a, b, more):
+	return _transitive_property(ops.eq, a, b, more)
 
 
-def _chain_relation(relation_pred, a, b, more):
-		result = relation_pred(a, b)
-		for t in more:
-			if not result:
-				break
-			a = b
-			b = t
-			result = relation_pred(a, b)
-		return result
+@builtin_symbol("<")
+@function_execution("a", "b", ["more"])
+def LessThan(_, a, b, more):
+	return _transitive_property(ops.lt, a, b, more)
 
 
-@symbol_table_entry("=")
-class Equality(jexec.Function):
-	def __init__(self):
-		super().__init__(["a", "b", ["more"]])
-	def evaluate(self, frame):
-		return _chain_relation(
-			lambda a, b: a == b, frame["a"], frame["b"], frame["more"])
+@builtin_symbol(">")
+@function_execution("a", "b", ["more"])
+def GreaterThan(_, a, b, more):
+	return _transitive_property(ops.gt, a, b, more)
 
 
-@symbol_table_entry("<")
-class LessThan(jexec.Function):
-	def __init__(self):
-		super().__init__(["a", "b", ["more"]])
-	def evaluate(self, frame):
-		return _chain_relation(
-			lambda a, b: a < b, frame["a"], frame["b"], frame["more"])
+@builtin_symbol("<=")
+@function_execution("a", "b", ["more"])
+def LessEqual(_, a, b, more):
+	return _transitive_property(ops.le, a, b, more)
 
 
-@symbol_table_entry(">")
-class GreaterThan(jexec.Function):
-	def __init__(self):
-		super().__init__(["a", "b", ["more"]])
-	def evaluate(self, frame):
-		return _chain_relation(
-			lambda a, b: a > b, frame["a"], frame["b"], frame["more"])
-
-
-@symbol_table_entry("<=")
-class LessEqual(jexec.Function):
-	def __init__(self):
-		super().__init__(["a", "b", ["more"]])
-	def evaluate(self, frame):
-		return _chain_relation(
-			lambda a, b: a <= b, frame["a"], frame["b"], frame["more"])
-
-
-@symbol_table_entry(">=")
-class GreaterEqual(jexec.Function):
-	def __init__(self):
-		super().__init__(["a", "b", ["more"]])
-	def evaluate(self, frame):
-		return _chain_relation(
-			lambda a, b: a >= b, frame["a"], frame["b"], frame["more"])
+@builtin_symbol(">=")
+@function_execution("a", "b", ["more"])
+def GreaterEqual(_, a, b, more):
+	return _transitive_property(ops.ge, a, b, more)
 
 
 # Empty conjunction is vacuously true.
 # (and) always holds as an axiom.
-@symbol_table_entry("and")
+@builtin_symbol("and")
 class Conjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -283,7 +280,7 @@ class Conjunction(jexec.Execution):
 # (or ...) is true iff any argument is true;
 # an empty (or) has no argument which is true.
 # (not (or)) always holds as an axiom.
-@symbol_table_entry("or")
+@builtin_symbol("or")
 class Disjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
@@ -296,59 +293,55 @@ class Disjunction(jexec.Execution):
 		return False
 
 
-@symbol_table_entry("not")
-class Negation(jexec.Function):
-	def __init__(self):
-		super().__init__(["p"])
-	def evaluate(self, frame):
-		return not _truthy(frame["p"])
+@builtin_symbol("not")
+@function_execution("p")
+def Negation(_, p):
+	return not _truthy(p)
 
 
-@symbol_table_entry("print")
-class Print(jexec.Function):
-	def __init__(self):
-		super().__init__(["msg"])
-	def evaluate(self, frame):
-		print(frame["msg"])
-		return nil
+@builtin_symbol("print")
+@function_execution("msg")
+def Print(_, msg):
+	print(msg)
+	return nil
 
 
-@symbol_table_entry("list")
-class List(jexec.Function):
-	def __init__(self):
-		super().__init__([["elements"]])
-	def evaluate(self, frame):
-		return frame["elements"]
-
-@symbol_table_entry("list-get")
-class ListGet(jexec.Function):
-	def __init__(self):
-		super().__init__(["lst", "idx"])
-	def evaluate(self, frame):
-		lst, idx = frame["lst"], frame["idx"]
-		if not (0 <= idx < len(lst)):
-			raise errors.IndexError(frame.call_form)
-		return lst[idx]
-
-@symbol_table_entry("list-set")
-class ListSet(jexec.Function):
-	def __init__(self):
-		super().__init__(["lst", "idx", "val"])
-	def evaluate(self, frame):
-		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
-		if not (0 <= idx < len(lst)):
-			raise errors.IndexError(frame.call_form)
-		lst[idx] = val
-		return val
-
-
-@symbol_table_entry("len")
-class Length(jexec.Function):
-	def __init__(self):
-		super().__init__(["sequence"])
-	def evaluate(self, frame):
-		try:
-			return len(frame["sequence"])
-		except TypeError:
-			raise errors.JimmyError(
-				frame.call_form, "Object has no concept of length.")
+#@builtin_symbol("list")
+#class List(jexec.Function):
+#	def __init__(self):
+#		super().__init__([["elements"]])
+#	def evaluate(self, frame):
+#		return frame["elements"]
+#
+#@builtin_symbol("list-get")
+#class ListGet(jexec.Function):
+#	def __init__(self):
+#		super().__init__(["lst", "idx"])
+#	def evaluate(self, frame):
+#		lst, idx = frame["lst"], frame["idx"]
+#		if not (0 <= idx < len(lst)):
+#			raise errors.IndexError(frame.call_form)
+#		return lst[idx]
+#
+#@builtin_symbol("list-set")
+#class ListSet(jexec.Function):
+#	def __init__(self):
+#		super().__init__(["lst", "idx", "val"])
+#	def evaluate(self, frame):
+#		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
+#		if not (0 <= idx < len(lst)):
+#			raise errors.IndexError(frame.call_form)
+#		lst[idx] = val
+#		return val
+#
+#
+#@builtin_symbol("len")
+#class Length(jexec.Function):
+#	def __init__(self):
+#		super().__init__(["sequence"])
+#	def evaluate(self, frame):
+#		try:
+#			return len(frame["sequence"])
+#		except TypeError:
+#			raise errors.JimmyError(
+#				frame.call_form, "Object has no concept of length.")

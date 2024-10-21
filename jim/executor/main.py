@@ -1,7 +1,8 @@
 def main(argv):
 	import sys
 	from jim import reader, main
-	from .interpreter import top_level_evaluate
+	from .interpreter import evaluate
+	from .errors import JimmyError, format_error
 
 	match argv:
 		case []:  # interactive mode
@@ -17,9 +18,13 @@ def main(argv):
 				if parsed is None:
 					break
 
-				result = top_level_evaluate(parsed)
-				if result is not None:
-					print("->", result, flush=True)
+				try:
+					result = evaluate(parsed)
+					# None is produced when the input was a no-op (e.g., a comment).
+					if result is not None:
+						print("->", result, flush=True)
+				except JimmyError as e:
+					print(format_error(e), file=sys.stderr)
 
 		case [filename]:
 			if filename == "-":
@@ -36,7 +41,7 @@ def main(argv):
 					if form is None:
 						break
 					#print("REPROD:", str(form).rstrip())
-					top_level_evaluate(form)
+					evaluate(form)
 
 		case _:
 			main.print_usage()
