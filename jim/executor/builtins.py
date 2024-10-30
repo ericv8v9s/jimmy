@@ -81,6 +81,12 @@ def Assertion(expr):
 	return nil
 
 
+@builtin_symbol("number?")
+@function_execution("value")
+def NumberTest(value):
+	return isinstance(value, Integer)
+
+
 @builtin_symbol("def")
 class Definition(jexec.Execution):
 	def __init__(self):
@@ -293,42 +299,52 @@ def Print(msg):
 	return nil
 
 
-#@builtin_symbol("list")
-#class List(jexec.Function):
-#	def __init__(self):
-#		super().__init__([["elements"]])
-#	def evaluate(self, frame):
-#		return frame["elements"]
-#
-#@builtin_symbol("list-get")
-#class ListGet(jexec.Function):
-#	def __init__(self):
-#		super().__init__(["lst", "idx"])
-#	def evaluate(self, frame):
-#		lst, idx = frame["lst"], frame["idx"]
-#		if not (0 <= idx < len(lst)):
-#			raise errors.IndexError(frame.call_form)
-#		return lst[idx]
-#
-#@builtin_symbol("list-set")
-#class ListSet(jexec.Function):
-#	def __init__(self):
-#		super().__init__(["lst", "idx", "val"])
-#	def evaluate(self, frame):
-#		lst, idx, val = frame["lst"], frame["idx"], frame["val"]
-#		if not (0 <= idx < len(lst)):
-#			raise errors.IndexError(frame.call_form)
-#		lst[idx] = val
-#		return val
-#
-#
-#@builtin_symbol("len")
-#class Length(jexec.Function):
-#	def __init__(self):
-#		super().__init__(["sequence"])
-#	def evaluate(self, frame):
-#		try:
-#			return len(frame["sequence"])
-#		except TypeError:
-#			raise errors.JimmyError(
-#				frame.call_form, "Object has no concept of length.")
+@builtin_symbol("list")
+@function_execution(["elements"])
+def List(elements):
+	return CompoundForm(elements)
+
+
+@builtin_symbol("list?")
+@function_execution("form")
+def ListTest(form):
+	return isinstance(form, CompoundForm)
+
+
+@builtin_symbol("get")
+@function_execution("lst", "idx")
+def Get(lst, idx):
+	idx = _unwrap_int(idx)
+	if not (0 <= idx < len(lst)):
+		raise errors.IndexError
+	return lst[idx]
+
+
+@builtin_symbol("rest")
+@function_execution("lst")
+def Rest(lst):
+	return CompoundForm(lst[:-1])
+
+
+@builtin_symbol("conj")
+@function_execution(["lists"])
+def Conjoin(lists):
+	raw_lists = map(lambda l: list(l.children), lists)
+	return CompoundForm(reduce(ops.add, raw_lists, []))
+
+
+@builtin_symbol("assoc")
+@function_execution("lst", "idx", "val")
+def Associate(lst, idx, val):
+	idx = _unwrap_int(idx)
+	if not (0 <= idx < len(lst)):
+		raise errors.IndexError
+	copy = list(lst.children)
+	copy[idx] = val
+	return CompoundForm(copy)
+
+
+@builtin_symbol("count")
+@function_execution("lst")
+def Count(lst):
+	return Integer(len(lst))
