@@ -1,0 +1,11 @@
+(def divide (fn (x y)
+	(assert (and (> x 0) (> y 0)))
+	(def r x)
+	(def q 0)
+	(while (<= y r)
+		(def r (- r y))
+		(def q (+ q 1)))
+	(print q)
+	(print r)))
+
+(divide 100 8)

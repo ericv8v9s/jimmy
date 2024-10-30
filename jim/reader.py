@@ -134,7 +134,10 @@ def parse_compound(chars):
 	if next(chars) != '(':
 		return ParseResult(False)
 	forms = []
-	while not _lookahead1(')')(chars).success:
+	while True:
+		skip_whitespace(chars)
+		if _lookahead1(')')(chars).success:
+			break
 		forms.append(parse_form(chars).result)
 	return ParseResult(True, CompoundForm(forms))
 
@@ -144,7 +147,10 @@ def parse_proof_anno(chars):
 	if next(chars) != '[':
 		return ParseResult(False)
 	forms = []
-	while not _lookahead1(']')(chars).success:
+	while True:
+		skip_whitespace(chars)
+		if _lookahead1(']')(chars).success:
+			break
 		forms.append(parse_form(chars).result)
 	return ParseResult(True, ProofAnnotation(forms))
 

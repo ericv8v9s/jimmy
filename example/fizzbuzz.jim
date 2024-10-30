@@ -1,8 +1,8 @@
-(assign n 0)
+(def n 0)
 (while (< n 100)
-	(assign n (+ n 1))
+	(def n (+ n 1))
 	(print (cond
 		((= 0 (% n 15)) "FizzBuzz")
 		((= 0 (% n 3)) "Fizz")
 		((= 0 (% n 5)) "Buzz")
-		(true n))))
+		(True n))))

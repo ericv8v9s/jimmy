@@ -12,33 +12,33 @@ import jim.executor.interpreter as interpreter
 
 
 class JimmyError(Exception):
-	def __init__(self, offending_form, msg):
+	def __init__(self, msg, offending_form=None):
 		super().__init__()
 		self.stackframes = list(interpreter.iter_stack())
-		self.offending_form = offending_form
 		self.msg = msg
+		if offending_form is None:
+			offending_form = interpreter.top_frame.call_form
+		self.offending_form = offending_form
 
 class UndefinedVariableError(JimmyError):
 	def __init__(self, symbol, msg="Variable is undefined."):
-		super().__init__(symbol, msg)
+		super().__init__(msg, symbol)
 
 class DivideByZeroError(JimmyError):
-	def __init__(self, offending_form, msg="Cannot divide by zero."):
-		super().__init__(offending_form, msg)
+	def __init__(self, msg="Cannot divide by zero."):
+		super().__init__(msg)
 
 class ArgumentMismatchError(JimmyError):
 	def __init__(self, offending_form, msg="Arguments do not match the parameters."):
-		super().__init__(offending_form, msg)
+		super().__init__(msg, offending_form)
 
 class IndexError(JimmyError):
-	def __init__(self, offending_form, msg="List index is out of bounds."):
-		super().__init__(offending_form, msg)
+	def __init__(self, msg="List index is out of bounds."):
+		super().__init__(msg)
 
 class AssertionError(JimmyError):
-	def __init__(self, offending_form, msg="Assertion not satisfied."):
-		super().__init__(offending_form, msg)
-
-class SyntaxError(JimmyError): pass
+	def __init__(self, msg="Assertion not satisfied."):
+		super().__init__(msg)
 
 
 def format_error(e):

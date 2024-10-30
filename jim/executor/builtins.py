@@ -8,7 +8,7 @@ import operator as ops
 
 
 # TODO make this immutable (outside this module)
-symbol_table = {
+builtin_symbols = {
 	"True": True,
 	"False": False
 }
@@ -16,7 +16,7 @@ symbol_table = {
 def builtin_symbol(name):
 	def reg_symbol(cls):
 		cls.__str__ = lambda self: name
-		symbol_table[name] = cls()
+		builtin_symbols[name] = cls()
 		return cls
 	return reg_symbol
 
@@ -24,24 +24,21 @@ def builtin_symbol(name):
 @builtin_symbol("nil")
 class Nil:
 	pass
-nil = symbol_table["nil"]
+nil = builtin_symbols["nil"]
 
 
 def _truthy(v):
-	return v is not False
+	return not (v is nil or v is False)
 
 
 def _wrap_progn(forms):
 	return CompoundForm([Symbol("progn"), *forms])
 
 
-def _unwrap_ints(values: list[Integer]) -> list[int]:
-	result = []
-	for n in values:
-		if not isinstance(n, Integer):
-			raise errors.JimmyError(n, "Value is not an integer.")
-		result.append(n.value)
-	return result
+def _unwrap_int(form: Integer) -> int:
+	if not isinstance(form, Integer):
+		raise errors.JimmyError("Value is not an integer.", form)
+	return form.value
 
 
 def product(values):  # just like the builtin sum
@@ -68,9 +65,8 @@ def function_execution(*param_spec, conversion=lambda x: x):
 	def decorator(eval_impl):
 		def __init__(self):
 			super(type(self), self).__init__(param_spec)
-		def evaluate(self, frame):
-			args = {k: frame[k] for k in flatten(param_spec)}
-			return conversion(eval_impl(frame, **args))
+		def evaluate(self, context, **locals):
+			return conversion(eval_impl(**locals))
 		# Creates a class of the same name, with Function as parent.
 		return type(evaluate.__name__, (jexec.Function,),
 				{ '__init__': __init__, 'evaluate': evaluate })
@@ -79,7 +75,7 @@ def function_execution(*param_spec, conversion=lambda x: x):
 
 @builtin_symbol("assert")
 @function_execution("expr")
-def Assertion(_, expr):
+def Assertion(expr):
 	if not _truthy(expr):
 		raise errors.AssertionError(expr)
 	return nil
@@ -90,41 +86,35 @@ class Definition(jexec.Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
 
-	def evaluate(self, frame):
-		match frame["lhs"]:
+	def evaluate(self, context, lhs, rhs):
+		match lhs:
 			case Symbol(value=symbol):
 				lhs = symbol
 			case _:
-				raise errors.SyntaxError(
-						frame["lhs"], "Definition target is not a variable.")
+				raise errors.JimmyError("Definition target is not an identifier.", lhs)
 
-		with interpreter.switch_stack(frame.last_frame) as f:
-			rhs = interpreter.evaluate(frame["rhs"])
-			f.symbol_table[lhs] = rhs
-
+		rhs = interpreter.evaluate(rhs)
+		context[lhs] = rhs
 		return rhs
 
 
-# This is the lambda form.
-# There is no defun form. A defun is (def xxx (func ...))
 @builtin_symbol("fn")
 class Function(jexec.Execution):
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
 
-	def evaluate(self, frame):
-		param_spec_raw = frame["param_spec"]
-		param_spec = []
-		for p in param_spec_raw:
+	def evaluate(self, context, param_spec, body):
+		param_spec_parsed = []
+		for p in param_spec:
 			match p:
 				case Symbol(value=symbol):  # positional
-					param_spec.append(symbol)
+					param_spec_parsed.append(symbol)
 				case CompoundForm(children=[Symbol(value=symbol)]):  # rest
-					param_spec.append([symbol])
+					param_spec_parsed.append([symbol])
 				case _:
-					raise errors.SyntaxError(
-							param_spec_raw, "The parameter specification is invalid.")
-		return jexec.JimmyFunction(param_spec, frame["body"])
+					raise errors.JimmyError(
+							"The parameter specification is invalid.", param_spec)
+		return jexec.JimmyFunction(param_spec_parsed, body, context)
 
 
 @builtin_symbol("progn")
@@ -132,12 +122,10 @@ class Progn(jexec.Execution):
 	def __init__(self):
 		super().__init__([["forms"]])
 
-	def evaluate(self, frame):
-		body = frame["forms"]
+	def evaluate(self, context, forms):
 		result = nil
-		with interpreter.switch_stack(frame.last_frame):
-			for form in body:
-				result = interpreter.evaluate(form)
+		for form in forms:
+			result = interpreter.evaluate(form)
 		return result
 
 
@@ -149,43 +137,39 @@ class Conditional(jexec.Macro):
 		#   ((test2) things...))
 		super().__init__([["branches"]])
 
-	def evaluate(self, frame):
-		for b in frame["branches"]:
+	def evaluate(self, context, branches):
+		for b in branches:
 			match b:
 				case CompoundForm(children=[test, *body]):
-					with interpreter.switch_stack(frame.last_frame):
-						if _truthy(interpreter.evaluate(test)):
-							return _wrap_progn(body)
+					if _truthy(interpreter.evaluate(test)):
+						return _wrap_progn(body)
 				case _:
-					raise errors.SyntaxError(b, "Invalid conditional branch.")
+					raise errors.JimmyError("Invalid conditional branch.", b)
 		return nil
 
 
 @builtin_symbol("while")
 class WhileLoop(jexec.Execution):
 	def __init__(self):
-		super().__init__(["test-form", ["body"]])
-	def evaluate(self, frame):
-		test, body = frame["test-form"], frame["body"]
-		with interpreter.switch_stack(frame.last_frame):
-			result = nil
-			progn_body = _wrap_progn(body)
-			while _truthy(interpreter.evaluate(test)):
-				result = interpreter.evaluate(progn_body)
-			return result
+		super().__init__(["test", ["body"]])
+	def evaluate(self, context, test, body):
+		result = nil
+		progn_body = _wrap_progn(body)
+		while _truthy(interpreter.evaluate(test)):
+			result = interpreter.evaluate(progn_body)
+		return result
 
 
 @builtin_symbol("+")
 @function_execution(["terms"], conversion=Integer)
-def Addition(_, terms):
-	terms = _unwrap_ints(terms)
-	return sum(terms)
+def Addition(terms):
+	return sum(map(_unwrap_int, terms))
 
 
 @builtin_symbol("-")
 @function_execution("n", ["terms"], conversion=Integer)
-def Subtraction(_, n, terms):
-	n, *terms = _unwrap_ints([n] + terms)
+def Subtraction(n, terms):
+	n, *terms = map(_unwrap_int, [n] + terms)
 	if len(terms) == 0:
 		return -n
 	return n - sum(terms)
@@ -193,29 +177,28 @@ def Subtraction(_, n, terms):
 
 @builtin_symbol("*")
 @function_execution(["terms"], conversion=Integer)
-def Multiplication(_, terms):
-	terms = _unwrap_ints(terms)
-	return product(terms)
+def Multiplication(terms):
+	return product(map(_unwrap_int, terms))
 
 
 @builtin_symbol("/")
 @function_execution("n", ["terms"], conversion=Integer)  # TODO implement rationals
-def Division(frame, n, terms):
-	n, *terms = _unwrap_ints([n] + terms)
+def Division(n, terms):
+	n, *terms = map(_unwrap_int, [n] + terms)
 	try:
 		if len(terms) == 0:
 			return 1 // n
 		return n // product(terms)
 	except ZeroDivisionError:
-		raise errors.DivideByZeroError(frame.call_form)
+		raise errors.DivideByZeroError
 
 
 @builtin_symbol("%")
 @function_execution("x", "y", conversion=Integer)
-def Modulo(frame, x, y):
-	x, y = _unwrap_ints([x, y])
+def Modulo(x, y):
+	x, y = _unwrap_int(x), _unwrap_int(y)
 	if y == 0:
-		raise errors.DivideByZeroError(frame.call_form)
+		raise errors.DivideByZeroError()
 	return x % y
 
 
@@ -232,31 +215,36 @@ def _transitive_property(pred, a, b, more):
 
 @builtin_symbol("=")
 @function_execution("a", "b", ["more"])
-def Equality(_, a, b, more):
+def Equality(a, b, more):
+	a, b, *more = map(_unwrap_int, [a, b, *more])
 	return _transitive_property(ops.eq, a, b, more)
 
 
 @builtin_symbol("<")
 @function_execution("a", "b", ["more"])
-def LessThan(_, a, b, more):
+def LessThan(a, b, more):
+	a, b, *more = map(_unwrap_int, [a, b, *more])
 	return _transitive_property(ops.lt, a, b, more)
 
 
 @builtin_symbol(">")
 @function_execution("a", "b", ["more"])
-def GreaterThan(_, a, b, more):
+def GreaterThan(a, b, more):
+	a, b, *more = map(_unwrap_int, [a, b, *more])
 	return _transitive_property(ops.gt, a, b, more)
 
 
 @builtin_symbol("<=")
 @function_execution("a", "b", ["more"])
-def LessEqual(_, a, b, more):
+def LessEqual(a, b, more):
+	a, b, *more = map(_unwrap_int, [a, b, *more])
 	return _transitive_property(ops.le, a, b, more)
 
 
 @builtin_symbol(">=")
 @function_execution("a", "b", ["more"])
-def GreaterEqual(_, a, b, more):
+def GreaterEqual(a, b, more):
+	a, b, *more = map(_unwrap_int, [a, b, *more])
 	return _transitive_property(ops.ge, a, b, more)
 
 
@@ -266,42 +254,41 @@ def GreaterEqual(_, a, b, more):
 class Conjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
-	def evaluate(self, frame):
+	def evaluate(self, context, terms):
 		result = True
-		for t in frame["terms"]:
-			with interpreter.switch_stack(frame.last_frame):
-				result = interpreter.evaluate(t)
-				if not _truthy(result):
-					return False
+		for t in terms:
+			result = interpreter.evaluate(t)
+			if not _truthy(result):
+				return result
 		return result
 
 
 # Empty disjunction is vacuously false.
-# (or ...) is true iff any argument is true;
+# (or ...) is true iff there exists an argument which is true;
 # an empty (or) has no argument which is true.
 # (not (or)) always holds as an axiom.
 @builtin_symbol("or")
 class Disjunction(jexec.Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
-	def evaluate(self, frame):
-		for t in frame["terms"]:
-			with interpreter.switch_stack(frame.last_frame):
-				result = interpreter.evaluate(t)
-				if _truthy(result):
-					return result
-		return False
+	def evaluate(self, context, terms):
+		result = False
+		for t in terms:
+			result = interpreter.evaluate(t)
+			if _truthy(result):
+				return result
+		return result
 
 
 @builtin_symbol("not")
 @function_execution("p")
-def Negation(_, p):
+def Negation(p):
 	return not _truthy(p)
 
 
 @builtin_symbol("print")
 @function_execution("msg")
-def Print(_, msg):
+def Print(msg):
 	print(msg)
 	return nil
 
