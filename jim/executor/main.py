@@ -32,16 +32,17 @@ def main(argv):
 			else:
 				f = open(filename)
 			with f:
-				while True:
-					try:
+				try:
+					while True:
 						form = reader.parse(lambda: f.read(1))
-					except reader.ParseError as e:
-						print(str(e), file=sys.stderr)
-						break
-					if form is None:
-						break
-					#print("REPROD:", str(form).rstrip())
-					evaluate(form)
+						if form is None:
+							break
+						#print("REPROD:", str(form).rstrip())
+						evaluate(form)
+				except reader.ParseError as e:
+					print(str(e), file=sys.stderr)
+				except JimmyError as e:
+					print(format_error(e), file=sys.stderr)
 
 		case _:
 			main.print_usage()

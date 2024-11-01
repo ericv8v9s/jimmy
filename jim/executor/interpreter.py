@@ -98,7 +98,7 @@ def evaluate(obj):
 
 	match obj:
 		# These objects are self-evaluating.
-		case Integer() | String() | jexec.Execution():
+		case Integer() | String() | jexec.Execution() | jimlang.nil:
 			return obj
 
 		case Symbol(value=name):
@@ -114,6 +114,9 @@ def evaluate(obj):
 			return None
 
 		case _:
+			for i, frame in enumerate(reversed(list(iter_stack()))):
+				print(f"DEBUG: {i}: {frame.call_form}")
+			print(f"DEBUG: raw object: {obj}")
 			assert False  # We should never see raw python object.
 
 
