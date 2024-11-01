@@ -17,10 +17,10 @@ class _ValueMixin:
 		return self == item
 
 	def __repr__(self):
-		return f"{type(self).__name__}({self.value!r})"
+		return repr(self.value)
 
 	def __str__(self):
-		return repr(self.value)
+		return str(self.value)
 
 
 class _CompoundMixin:
@@ -38,6 +38,8 @@ class _CompoundMixin:
 		return self.children[key]
 
 	def __contains__(self, item):
+		# Note that this is about if item is a sub-tree of this compound.
+		# Hence we check if self == item and check for containment recursively.
 		return self == item or any(item in child for child in self.children)
 
 	@property
@@ -59,7 +61,7 @@ class _CompoundMixin:
 		return type(self) is type(other) and self.children == other.children
 
 
-class CodeObject(ABC):
+class LanguageObject(ABC):
 	@abstractmethod
 	def __hash__(self):
 		pass
@@ -69,7 +71,7 @@ class CodeObject(ABC):
 		pass
 
 
-class Form(CodeObject):
+class Form(LanguageObject):
 	pass
 
 class Atom(_ValueMixin, Form):
@@ -80,30 +82,34 @@ class Integer(Atom):
 	pass
 
 class Symbol(Atom):
-	def __str__(self):
-		return self.value
+	def __repr__(self):
+		return self.value  # Don't want quotes around symbol names.
 
 class String(Atom):
 	_str_escape = str.maketrans({
 		'"': '\\"',
 		"\\": "\\\\"})
-	def __str__(self):
+	def __repr__(self):
 		return '"' + self.value.translate(self._str_escape) + '"'
 
 
 class CompoundForm(_CompoundMixin, Form):
 	def __init__(self, forms):
 		super().__init__(children=forms)
+	def __repr__(self):
+		return '(' + " ".join(map(repr, self.children)) + ')'
 	def __str__(self):
-		return "(" + " ".join(map(str, self.children)) + ")"
+		return repr(self)
 
-class ProofAnnotation(_CompoundMixin, CodeObject):
-	def __init__(self, forms):
-		super().__init__(children=forms)
+class Array(Atom):
+	def __init__(self, elements):
+		super().__init__(list(elements))
+	def __repr__(self):
+		return '[' + " ".join(map(repr, self.value)) + ']'
 	def __str__(self):
-		return "[" + " ".join(map(str, self.children)) + "]"
+		return repr(self)
 
-class Comment(_ValueMixin, CodeObject):
+class Comment(_ValueMixin, LanguageObject):
 	def __init__(self, content):
 		super().__init__(value=content)
 	def __str__(self):
@@ -168,10 +174,10 @@ def tree_equal(u, v, eq=lambda u, v: u == v):
 
 
 __all__ = [x.__name__ for x in [
-	CodeObject,
+	LanguageObject,
 	Form,
 	Atom, Integer, Symbol, String,
 	CompoundForm,
-	ProofAnnotation,
+	Array,
 	Comment
 ]]

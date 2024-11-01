@@ -3,7 +3,7 @@ from functools import wraps, cache
 from dataclasses import dataclass
 from typing import Any
 
-from jim.ast import *
+from jim.objects import *
 
 
 _SPACES = set(whitespace)
@@ -114,7 +114,7 @@ def parse_form(chars):
 	order = [
 		parse_comment,
 		parse_compound,
-		parse_proof_anno,
+		parse_array,
 		parse_string,
 		parse_integer,
 		parse_symbol]
@@ -143,7 +143,7 @@ def parse_compound(chars):
 
 
 @_component_parser
-def parse_proof_anno(chars):
+def parse_array(chars):
 	if next(chars) != '[':
 		return ParseResult(False)
 	forms = []
@@ -152,7 +152,7 @@ def parse_proof_anno(chars):
 		if _lookahead1(']')(chars).success:
 			break
 		forms.append(parse_form(chars).result)
-	return ParseResult(True, ProofAnnotation(forms))
+	return ParseResult(True, Array(forms))
 
 
 @_component_parser

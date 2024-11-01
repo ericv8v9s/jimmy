@@ -5,8 +5,8 @@ from pydantic.dataclasses import dataclass
 import jim.checker.builtins as jbuiltins
 import jim.checker.execution as jexec
 import jim.checker.errors as jerrors
-from jim.ast import *
-from jim.ast import filter_tree
+from jim.objects import *
+from jim.objects import filter_tree
 from jim.debug import debug
 
 

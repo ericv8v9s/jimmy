@@ -1,5 +1,5 @@
 import jim.checker.interpreter as interpreter
-import jim.ast
+import jim.objects
 
 
 class JimmyError(Exception):
@@ -34,7 +34,7 @@ class SyntaxError(JimmyError): pass
 class UnknownNamedResultError(JimmyError):
 	def __init__(self, name):
 		super().__init__(
-			jim.ast.Symbol(name), "Symbol does not name a previous result.")
+			jim.objects.Symbol(name), "Symbol does not name a previous result.")
 
 class RuleFormMismatchError(JimmyError):
 	def __init__(self, form, last_form, msg=None):

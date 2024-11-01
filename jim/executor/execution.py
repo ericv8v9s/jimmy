@@ -1,4 +1,4 @@
-import jim.ast
+import jim.objects
 import jim.executor.interpreter as interpreter
 import jim.executor.builtins as jimlang
 
@@ -59,7 +59,7 @@ class JimmyFunction(Function):
 class ArgumentMismatchError(Exception):
 	pass
 
-def fill_parameters(parameter_spec, arguments) -> dict[str, jim.ast.Form]:
+def fill_parameters(parameter_spec, arguments) -> dict[str, jim.objects.Form]:
 	params = dict()  # collects arguments to match up with parameters
 	arg_idx = 0
 

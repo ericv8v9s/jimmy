@@ -22,7 +22,7 @@ def main(argv):
 					result = evaluate(parsed)
 					# None is produced when the input was a no-op (e.g., a comment).
 					if result is not None:
-						print("->", result, flush=True)
+						print("->", repr(result), flush=True)
 				except JimmyError as e:
 					print(format_error(e), file=sys.stderr)
 

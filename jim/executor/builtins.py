@@ -1,7 +1,7 @@
 import jim.executor.execution as jexec
 import jim.executor.interpreter as interpreter
 import jim.executor.errors as errors
-from jim.ast import *
+from jim.objects import *
 
 from functools import reduce
 import operator as ops
@@ -23,7 +23,8 @@ def builtin_symbol(name):
 
 @builtin_symbol("nil")
 class Nil:
-	pass
+	def __repr__(self):
+		return "nil"
 nil = builtin_symbols["nil"]
 
 
@@ -299,52 +300,65 @@ def Print(msg):
 	return nil
 
 
-@builtin_symbol("list")
+@builtin_symbol("array")
 @function_execution(["elements"])
-def List(elements):
-	return CompoundForm(elements)
+def MakeArray(elements):
+	return Array(elements)
 
 
-@builtin_symbol("list?")
+@builtin_symbol("array?")
 @function_execution("form")
-def ListTest(form):
-	return isinstance(form, CompoundForm)
+def ArrayTest(form):
+	return isinstance(form, Array)
 
 
 @builtin_symbol("get")
-@function_execution("lst", "idx")
-def Get(lst, idx):
+@function_execution("arr", "idx")
+def Get(arr, idx):
 	idx = _unwrap_int(idx)
-	if not (0 <= idx < len(lst)):
+	try:
+		return arr.value[idx]
+	except IndexError:
 		raise errors.IndexError
-	return lst[idx]
 
 
 @builtin_symbol("rest")
-@function_execution("lst")
-def Rest(lst):
-	return CompoundForm(lst[:-1])
+@function_execution("arr")
+def Rest(arr):
+	return Array(arr.value[:-1])
 
 
 @builtin_symbol("conj")
-@function_execution(["lists"])
-def Conjoin(lists):
-	raw_lists = map(lambda l: list(l.children), lists)
-	return CompoundForm(reduce(ops.add, raw_lists, []))
+@function_execution(["arrays"])
+def Conjoin(arrays):
+	raw_lists = map(lambda a: a.value, arrays)
+	return Array(reduce(ops.add, raw_lists, []))
 
 
 @builtin_symbol("assoc")
-@function_execution("lst", "idx", "val")
-def Associate(lst, idx, val):
+@function_execution("arr", "idx", "val")
+def Associate(arr, idx, val):
 	idx = _unwrap_int(idx)
-	if not (0 <= idx < len(lst)):
+	copy = list(arr.value)
+	try:
+		copy[idx] = val
+	except IndexError:
 		raise errors.IndexError
-	copy = list(lst.children)
-	copy[idx] = val
-	return CompoundForm(copy)
+	return Array(copy)
+
+
+@builtin_symbol("assoc!")
+@function_execution("arr", "idx", "val")
+def MutatingAssociate(arr, idx, val):
+	idx = _unwrap_int(idx)
+	try:
+		arr.value[idx] = val
+	except IndexError:
+		raise errors.IndexError
+	return arr
 
 
 @builtin_symbol("count")
-@function_execution("lst")
-def Count(lst):
-	return Integer(len(lst))
+@function_execution("arr")
+def Count(arr):
+	return Integer(len(arr.value))

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 import jim.executor.builtins as jimlang
 import jim.executor.execution as jexec
 from .errors import *
-from jim.ast import *
+from jim.objects import *
 
 
 class Context:
@@ -98,7 +98,7 @@ def evaluate(obj):
 
 	match obj:
 		# These objects are self-evaluating.
-		case Integer() | String() | jexec.Execution() | jimlang.nil:
+		case Integer() | String() | Array() | jexec.Execution() | jimlang.nil:
 			return obj
 
 		case Symbol(value=name):
@@ -108,10 +108,6 @@ def evaluate(obj):
 			if len(forms) == 0:
 				return jimlang.nil
 			return invoke(obj)
-
-		case CodeObject():
-			# comments and proof annotations are noops
-			return None
 
 		case _:
 			for i, frame in enumerate(reversed(list(iter_stack()))):

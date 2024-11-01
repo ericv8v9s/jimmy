@@ -1,12 +1,12 @@
 from abc import ABC, abstractmethod
-from jim.ast import *
-from jim.ast import filter_tree
+from jim.objects import *
+from jim.objects import filter_tree
 from jim.debug import debug
 
 
 class _GrammarBase(ABC):
 	@abstractmethod
-	def check(self, ast: CodeObject):
+	def check(self, ast: SyntaxObject):
 		raise NotImplementedError
 
 

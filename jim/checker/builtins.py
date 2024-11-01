@@ -2,8 +2,8 @@ from functools import wraps, partial
 from itertools import filterfalse
 from collections import Counter
 
-import jim.ast
-from jim.ast import *
+import jim.objects
+from jim.objects import *
 import jim.grammar as gmr
 from jim.grammar import symbol, compound, repeat, form
 from jim.checker.execution import Execution, Function
@@ -138,7 +138,7 @@ class Substitution(Function):
 		@rule_of_inference(None)
 		def sub_rule(f, ast):
 			debug(f"RULE sub {a}->{b}: {origin=!s}; {ast=!s}")
-			return jim.ast.tree_equal(origin, ast,
+			return jim.objects.tree_equal(origin, ast,
 					lambda u, v: u == v or (u == a and v == b))
 		return sub_rule
 
