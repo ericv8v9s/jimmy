@@ -105,6 +105,28 @@ class Definition(jexec.Execution):
 		return rhs
 
 
+@builtin_symbol("let")
+class Let(jexec.Execution):
+	def __init__(self):
+		super().__init__(["bindings", ["forms"]])
+
+	def evaluate(self, context, bindings, forms):
+		# bindings should be pairs of names to values, thus must be of even size.
+		if not isinstance(bindings, CompoundForm) or not len(bindings) % 2 == 0:
+			raise errors.JimmyError("Bindings definition invalid.", bindings)
+
+		bindings_raw = bindings
+		bindings = dict()
+
+		for i in range(0, len(bindings_raw), 2):
+			k, v = bindings_raw[i], bindings_raw[i+1]
+			if not isinstance(k, Symbol):
+				raise errors.JimmyError("Definition target is not an identifier.", k)
+			bindings[k.value] = interpreter.evaluate(v)
+
+		with interpreter.switch_context(interpreter.Context(context, **bindings)):
+			return interpreter.evaluate(_wrap_progn(forms))
+
 @builtin_symbol("fn")
 class Function(jexec.Execution):
 	def __init__(self):
