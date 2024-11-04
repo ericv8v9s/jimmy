@@ -101,9 +101,10 @@ class CompoundForm(_CompoundMixin, Form):
 	def __str__(self):
 		return repr(self)
 
-class Array(Atom):
+class Array(Atom, list):
 	def __init__(self, elements):
-		super().__init__(list(elements))
+		Atom.__init__(self, list(elements))
+		list.__init__(self, self.value)
 	def __repr__(self):
 		return '[' + " ".join(map(repr, self.value)) + ']'
 	def __str__(self):

@@ -71,6 +71,6 @@ def fill_parameters(parameter_spec, arguments) -> dict[str, jim.objects.Form]:
 			else:
 				raise ArgumentMismatchError
 		elif isinstance(p, list):  # rest
-			params[p[0]] = arguments[arg_idx:]
+			params[p[0]] = jim.objects.Array(arguments[arg_idx:])
 			arg_idx += len(params[p[0]])
 	return params

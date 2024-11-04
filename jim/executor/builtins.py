@@ -339,7 +339,7 @@ def ArrayTest(form):
 def Get(arr, idx):
 	idx = _unwrap_int(idx)
 	try:
-		return arr.value[idx]
+		return arr[idx]
 	except IndexError:
 		raise errors.IndexError
 
@@ -347,7 +347,7 @@ def Get(arr, idx):
 @builtin_symbol("rest")
 @function_execution("arr")
 def Rest(arr):
-	return Array(arr.value[:-1])
+	return Array(arr[:-1])
 
 
 @builtin_symbol("conj")
@@ -361,7 +361,7 @@ def Conjoin(arrays):
 @function_execution("arr", "idx", "val")
 def Associate(arr, idx, val):
 	idx = _unwrap_int(idx)
-	copy = list(arr.value)
+	copy = list(arr)
 	try:
 		copy[idx] = val
 	except IndexError:
@@ -383,4 +383,4 @@ def MutatingAssociate(arr, idx, val):
 @builtin_symbol("count")
 @function_execution("arr")
 def Count(arr):
-	return Integer(len(arr.value))
+	return Integer(len(arr))
