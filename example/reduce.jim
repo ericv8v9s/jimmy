@@ -1,7 +1,8 @@
-(def reduce (fn (f val list)
-	(def i 0)
-	(def len (count list))
-	(while (< i len)
-		(def val (f val (get list i)))
-		(def i (+ i 1)))
-	val))
+(def reduce (fn (combine initial values)
+	(cond
+		((> (count values) 0)
+			(reduce
+				combine
+				(combine initial (get values 0))
+				(rest values)))
+		(True initial))))
