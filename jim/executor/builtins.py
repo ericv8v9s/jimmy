@@ -339,15 +339,15 @@ def ArrayTest(form):
 def Get(arr, idx):
 	idx = _unwrap_int(idx)
 	try:
-		return arr[idx]
-	except IndexError:
+		return arr[idx % len(arr)]
+	except ZeroDivisionError:
 		raise errors.IndexError
 
 
 @builtin_symbol("rest")
 @function_execution("arr")
 def Rest(arr):
-	return Array(arr[:-1])
+	return Array(arr[1:])
 
 
 @builtin_symbol("conj")
@@ -363,8 +363,8 @@ def Associate(arr, idx, val):
 	idx = _unwrap_int(idx)
 	copy = list(arr)
 	try:
-		copy[idx] = val
-	except IndexError:
+		copy[idx % len(arr)] = val
+	except ZeroDivisionError:
 		raise errors.IndexError
 	return Array(copy)
 
@@ -374,8 +374,8 @@ def Associate(arr, idx, val):
 def MutatingAssociate(arr, idx, val):
 	idx = _unwrap_int(idx)
 	try:
-		arr.value[idx] = val
-	except IndexError:
+		arr[idx % len(arr)] = val
+	except ZeroDivisionError:
 		raise errors.IndexError
 	return arr
 
