@@ -384,3 +384,23 @@ def MutatingAssociate(arr, idx, val):
 @function_execution("arr")
 def Count(arr):
 	return Integer(len(arr))
+
+
+@builtin_symbol("load")
+@function_execution("path")
+def Load(path):
+	if not isinstance(path, String):
+		raise errors.JimmyError("File path is not a string.")
+	import jim.reader
+
+	try:
+		with open(path.value) as f:
+			with jim.reader.fresh_reader_state():
+				forms = list(jim.reader.load_forms(lambda: f.read(1)))
+	except OSError as e:
+		raise errors.LoadError(e)
+
+	result = nil
+	for form in forms:
+		result = interpreter.evaluate(form)
+	return result

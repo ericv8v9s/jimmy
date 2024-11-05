@@ -6,23 +6,20 @@ def main(argv):
 
 	match argv:
 		case []:  # interactive mode
+			forms = reader.load_forms(lambda: sys.stdin.read(1))
 			while True:
 				print("<- ", end="", flush=True)
-
 				try:
-					parsed = reader.parse(lambda: sys.stdin.read(1))
+					form = next(forms)
 				except reader.ParseError as e:
 					print(str(e), file=sys.stderr)
 					break
-
-				if parsed is None:
+				except StopIteration:
 					break
 
 				try:
-					result = evaluate(parsed)
-					# None is produced when the input was a no-op (e.g., a comment).
-					if result is not None:
-						print("->", repr(result), flush=True)
+					result = evaluate(form)
+					print("->", repr(result), flush=True)
 				except JimmyError as e:
 					print(format_error(e), file=sys.stderr)
 
@@ -33,10 +30,7 @@ def main(argv):
 				f = open(filename)
 			with f:
 				try:
-					while True:
-						form = reader.parse(lambda: f.read(1))
-						if form is None:
-							break
+					for form in reader.load_forms(lambda: f.read(1)):
 						#print("REPROD:", str(form).rstrip())
 						evaluate(form)
 				except reader.ParseError as e:

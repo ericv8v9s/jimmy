@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from string import whitespace, digits, ascii_letters
 from functools import wraps, cache
 from dataclasses import dataclass
@@ -14,7 +15,31 @@ _SEPARATORS = set("()[]") | _SPACES | {""}
 _IDENT_CHARS = _LETTERS | _PUNCTS | _DIGITS
 
 
+# The parser is unfortunately stateful...
 _line_num = 1
+_buffer = []
+_next_char = 0
+
+@contextmanager
+def fresh_reader_state():
+	# This exists for the load function.
+	global _line_num, _buffer, _next_char
+
+	_line_num_save = _line_num
+	_buffer_save = _buffer
+	_next_char_save = _next_char
+
+	_line_num = 1
+	_buffer = []
+	_next_char = 0
+
+	try:
+		yield
+	finally:
+		_line_num = _line_num_save
+		_buffer = _buffer_save
+		_next_char = _next_char_save
+
 
 class ParseError(Exception):
 	def __init__(self, msg):
@@ -23,10 +48,6 @@ class ParseError(Exception):
 		self.line = _line_num
 	def __str__(self):
 		return f"Parse error on line {self.line}: {self.msg}"
-
-
-_buffer = []
-_next_char = 0
 
 
 @dataclass
@@ -61,7 +82,7 @@ def _component_parser(parse_function):
 	return component_parser_wrapper
 
 
-def _wrap_char_source(get_next_char):
+def wrap_char_source(get_next_char):
 	"""
 	Wraps the character source function into a generator.
 
@@ -92,14 +113,22 @@ def _lookahead1(c):
 	return lookahead
 
 
-def parse(get_next_char):
-	chars = _wrap_char_source(get_next_char)
-
+def parse(chars):
 	skip_whitespace(chars)
 	if _lookahead1("")(chars).success:  # empty string indicates EOF
 		return None
-
 	return parse_form(chars).result
+
+
+def load_forms(get_next_char):
+	chars = wrap_char_source(get_next_char)
+	while True:
+		form = parse(chars)
+		if form is None:
+			break
+		if isinstance(form, Comment):
+			continue
+		yield form
 
 
 @_component_parser
