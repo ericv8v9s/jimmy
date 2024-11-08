@@ -52,7 +52,7 @@ def format_error(e):
 
 	result += (
 			"The evaluation of\n"
-			f"  {e.offending_form}\n"
+			f"  {e.offending_form!r}\n"
 			"Failed because\n"
 			f"  {e.msg}")
 
