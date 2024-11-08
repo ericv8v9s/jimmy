@@ -146,6 +146,20 @@ class Function(jexec.Execution):
 		return jexec.JimmyFunction(param_spec_parsed, body, context)
 
 
+
+@builtin_symbol("apply")
+class Apply(jexec.Macro):
+	def __init__(self):
+		super().__init__(["f", "args"])
+
+	def evaluate(self, context, f, args):
+		args_cooked = interpreter.evaluate(args)
+		try:
+			return CompoundForm([f, *args_cooked])
+		except TypeError:
+			return CompoundForm([f, args_cooked])
+
+
 @builtin_symbol("progn")
 class Progn(jexec.Execution):
 	def __init__(self):
