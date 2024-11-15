@@ -40,14 +40,14 @@ class Macro(Execution, EvaluateOut):
 		super().__init__(parameter_spec)
 
 
-class JimmyFunction(Function):
-	def __init__(self, parameter_spec, code, closure):
+class UserFunction(Function):
+	def __init__(self, parameter_spec, code, parent_context):
 		super().__init__(parameter_spec)
 		self.code = code
-		self.closure = closure
+		self.parent_context = parent_context
 
 	def context(self, locals):
-		return interpreter.Context(self.closure, **locals)
+		return interpreter.Context(self.parent_context, **locals)
 
 	def evaluate(self, context, **locals):
 		last = jimlang.nil

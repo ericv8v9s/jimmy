@@ -143,7 +143,7 @@ class Function(jexec.Execution):
 				case _:
 					raise errors.JimmyError(
 							"The parameter specification is invalid.", param_spec)
-		return jexec.JimmyFunction(param_spec_parsed, body, context)
+		return jexec.UserFunction(param_spec_parsed, body, context)
 
 
 
