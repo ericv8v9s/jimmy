@@ -1,0 +1,12 @@
+(def average (fn (a b)
+	(assert (<= a b))
+	(/ (+ a b) 2)
+	[do math...]
+	[reiterate (and (<= a last) (<= last b))]))
+
+(let (
+		a 3
+		b 9)
+	(assert (<= a b))
+	(def m (average a b))
+	[assert (and (<= a m) (<= m b))])

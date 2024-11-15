@@ -1,0 +1,2 @@
+(def partial (fn (f (xs))
+	(fn ((ys)) (apply f (conj xs ys)))))
