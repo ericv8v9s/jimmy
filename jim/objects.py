@@ -1,3 +1,4 @@
+from collections import UserList
 from abc import ABC, abstractmethod
 from jim.debug import debug
 
@@ -23,44 +24,6 @@ class _ValueMixin:
 		return str(self.value)
 
 
-class _CompoundMixin:
-	def __init__(self, children, *args, **kws):
-		self.children = tuple(children)
-		super().__init__(*args, **kws)
-
-	def __len__(self):
-		return len(self.children)
-
-	def __iter__(self):
-		return iter(self.children)
-
-	def __getitem__(self, key):
-		return self.children[key]
-
-	def __contains__(self, item):
-		# Note that this is about if item is a sub-tree of this compound.
-		# Hence we check if self == item and check for containment recursively.
-		return self == item or any(item in child for child in self.children)
-
-	@property
-	def head(self):
-		return self.children[0]
-
-	@property
-	def rest(self):
-		return self.children[1:]
-
-	def __repr__(self):
-		return type(self).__name__  \
-				+ "(" + " ".join(map(repr, self.children)) + ")"
-
-	def __hash__(self):
-		return hash(self.children)
-
-	def __eq__(self, other):
-		return type(self) is type(other) and self.children == other.children
-
-
 class LanguageObject(ABC):
 	@abstractmethod
 	def __hash__(self):
@@ -72,6 +35,7 @@ class LanguageObject(ABC):
 
 
 class Form(LanguageObject):
+	"""Notably, comments are language objects but are not forms."""
 	pass
 
 class Atom(_ValueMixin, Form):
@@ -93,22 +57,16 @@ class String(Atom):
 		return '"' + self.value.translate(self._str_escape) + '"'
 
 
-class CompoundForm(_CompoundMixin, Form):
-	def __init__(self, forms):
-		super().__init__(children=forms)
+class List(list, Form):
+	def __init__(self, elements=None):
+		list.__init__(self, [] if elements is None else elements)
+		LanguageObject.__init__(self)
+		self.elements = self
 	def __repr__(self):
-		return '(' + " ".join(map(repr, self.children)) + ')'
+		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
 		return repr(self)
 
-class Array(Atom, list):
-	def __init__(self, elements):
-		Atom.__init__(self, list(elements))
-		list.__init__(self, self.value)
-	def __repr__(self):
-		return '[' + " ".join(map(repr, self.value)) + ']'
-	def __str__(self):
-		return repr(self)
 
 class Comment(_ValueMixin, LanguageObject):
 	def __init__(self, content):
@@ -175,10 +133,8 @@ def tree_equal(u, v, eq=lambda u, v: u == v):
 
 
 __all__ = [x.__name__ for x in [
-	LanguageObject,
-	Form,
+	LanguageObject, Form,
 	Atom, Integer, Symbol, String,
-	CompoundForm,
-	Array,
+	List,
 	Comment
 ]]

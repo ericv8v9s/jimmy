@@ -33,7 +33,7 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
-	return CompoundForm([Symbol("progn"), *forms])
+	return List([Symbol("progn"), *forms])
 
 
 def _unwrap_int(form: Integer) -> int:
@@ -112,7 +112,7 @@ class Let(jexec.Execution):
 
 	def evaluate(self, context, bindings, forms):
 		# bindings should be pairs of names to values, thus must be of even size.
-		if not isinstance(bindings, CompoundForm) or not len(bindings) % 2 == 0:
+		if not isinstance(bindings, List) or not len(bindings) % 2 == 0:
 			raise errors.JimmyError("Bindings definition invalid.", bindings)
 
 		bindings_raw = bindings
@@ -138,7 +138,7 @@ class Function(jexec.Execution):
 			match p:
 				case Symbol(value=symbol):  # positional
 					param_spec_parsed.append(symbol)
-				case CompoundForm(children=[Symbol(value=symbol)]):  # rest
+				case List(elements=[Symbol(value=symbol)]):  # rest
 					param_spec_parsed.append([symbol])
 				case _:
 					raise errors.JimmyError(
@@ -155,9 +155,9 @@ class Apply(jexec.Macro):
 	def evaluate(self, context, f, args):
 		args_cooked = interpreter.evaluate(args)
 		try:
-			return CompoundForm([f, *args_cooked])
+			return List([f, *args_cooked])
 		except TypeError:
-			return CompoundForm([f, args_cooked])
+			return List([f, args_cooked])
 
 
 @builtin_symbol("progn")
@@ -183,7 +183,7 @@ class Conditional(jexec.Macro):
 	def evaluate(self, context, branches):
 		for b in branches:
 			match b:
-				case CompoundForm(children=[test, *body]):
+				case List(elements=[test, *body]):
 					if _truthy(interpreter.evaluate(test)):
 						return _wrap_progn(body)
 				case _:
@@ -336,68 +336,67 @@ def Print(msg):
 	return nil
 
 
-@builtin_symbol("array")
+@builtin_symbol("list")
 @function_execution(["elements"])
-def MakeArray(elements):
-	return Array(elements)
+def MakeList(elements):
+	return List(elements)
 
 
-@builtin_symbol("array?")
-@function_execution("form")
-def ArrayTest(form):
-	return isinstance(form, Array)
+@builtin_symbol("list?")
+@function_execution("val")
+def ListTest(val):
+	return isinstance(form, List)
 
 
 @builtin_symbol("get")
-@function_execution("arr", "idx")
-def Get(arr, idx):
+@function_execution("lst", "idx")
+def Get(lst, idx):
 	idx = _unwrap_int(idx)
 	try:
-		return arr[idx % len(arr)]
+		return lst[idx % len(lst)]
 	except ZeroDivisionError:
 		raise errors.IndexError
 
 
 @builtin_symbol("rest")
-@function_execution("arr")
-def Rest(arr):
-	return Array(arr[1:])
+@function_execution("lst")
+def Rest(lst):
+	return List(lst[1:])
 
 
 @builtin_symbol("conj")
-@function_execution(["arrays"])
-def Conjoin(arrays):
-	raw_lists = map(lambda a: a.value, arrays)
-	return Array(reduce(ops.add, raw_lists, []))
+@function_execution(["lists"])
+def Conjoin(lists):
+	return List(reduce(ops.add, lists, []))
 
 
 @builtin_symbol("assoc")
-@function_execution("arr", "idx", "val")
-def Associate(arr, idx, val):
+@function_execution("lst", "idx", "val")
+def Associate(lst, idx, val):
 	idx = _unwrap_int(idx)
-	copy = list(arr)
+	copy = list(lst)
 	try:
-		copy[idx % len(arr)] = val
+		copy[idx % len(lst)] = val
 	except ZeroDivisionError:
 		raise errors.IndexError
-	return Array(copy)
+	return List(copy)
 
 
 @builtin_symbol("assoc!")
-@function_execution("arr", "idx", "val")
-def MutatingAssociate(arr, idx, val):
+@function_execution("lst", "idx", "val")
+def MutatingAssociate(lst, idx, val):
 	idx = _unwrap_int(idx)
 	try:
-		arr[idx % len(arr)] = val
+		lst[idx % len(lst)] = val
 	except ZeroDivisionError:
 		raise errors.IndexError
-	return arr
+	return lst
 
 
 @builtin_symbol("count")
-@function_execution("arr")
-def Count(arr):
-	return Integer(len(arr))
+@function_execution("lst")
+def Count(lst):
+	return Integer(len(lst))
 
 
 @builtin_symbol("load")

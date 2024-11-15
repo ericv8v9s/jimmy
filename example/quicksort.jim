@@ -24,7 +24,7 @@
 	(assoc! A j tmp)))
 
 
-(def l [9 8 3 4 7 0 2 1 6 5])
+(def l (list 9 8 3 4 7 0 2 1 6 5))
 (print "UNSORTED")
 (print l)
 (quicksort l 0 (- (count l) 1))

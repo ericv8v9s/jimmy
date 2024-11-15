@@ -98,14 +98,14 @@ def evaluate(obj):
 
 	match obj:
 		# These objects are self-evaluating.
-		case Integer() | String() | Array() | jexec.Execution() | jimlang.nil:
+		case Integer() | String() | jexec.Execution() | jimlang.nil:
 			return obj
 
 		case Symbol(value=name):
 			return top_frame.context.lookup(name)
 
-		case CompoundForm(children=forms):
-			if len(forms) == 0:
+		case List():
+			if len(obj) == 0:
 				return jimlang.nil
 			return invoke(obj)
 
@@ -116,28 +116,28 @@ def evaluate(obj):
 			assert False  # We should never see raw python object.
 
 
-def invoke(compound_form):
-	execution = evaluate(compound_form.head)
-	args = compound_form.rest
+def invoke(lst):
+	execution = evaluate(lst[0])
+	args = lst[1:]
 
 	if not isinstance(execution, jexec.Execution):
-		raise JimmyError("Invocation target is invalid.", compound_form)
+		raise JimmyError("Invocation target is invalid.", lst)
 
 	if isinstance(execution, jexec.EvaluateIn):
 		args = map(evaluate, args)
 
-	#print(f"DEBUG: invoke: {compound_form}")
+	#print(f"DEBUG: invoke: {lst}")
 
 	try:
 		matched_params = jexec.fill_parameters(execution.parameter_spec, args)
 	except jexec.ArgumentMismatchError:
-		raise ArgumentMismatchError(compound_form) from None
+		raise ArgumentMismatchError(lst) from None
 
 	# The context should be determined by execution:
 	# def form needs context to be the outer context,
 	# function calls need to switch to the function closure.
 	context = execution.context(matched_params)
-	with push_new_frame(compound_form, context) as f:
+	with push_new_frame(lst, context) as f:
 		result = execution.evaluate(context, **matched_params)
 
 	if isinstance(execution, jexec.EvaluateOut):

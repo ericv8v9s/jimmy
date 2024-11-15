@@ -77,7 +77,7 @@ def form(ast):
 
 @_grammar
 def compound(ast):
-	return isinstance(ast, CompoundForm)
+	return isinstance(ast, List)
 
 @compound.specialized
 def compound(ast, *children):

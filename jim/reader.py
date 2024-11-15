@@ -142,8 +142,7 @@ def skip_whitespace(chars):
 def parse_form(chars):
 	order = [
 		parse_comment,
-		parse_compound,
-		parse_array,
+		parse_list,
 		parse_string,
 		parse_integer,
 		parse_symbol]
@@ -159,7 +158,7 @@ def parse_form(chars):
 
 
 @_component_parser
-def parse_compound(chars):
+def parse_list(chars):
 	if next(chars) != '(':
 		return ParseResult(False)
 	forms = []
@@ -168,20 +167,7 @@ def parse_compound(chars):
 		if _lookahead1(')')(chars).success:
 			break
 		forms.append(parse_form(chars).result)
-	return ParseResult(True, CompoundForm(forms))
-
-
-@_component_parser
-def parse_array(chars):
-	if next(chars) != '[':
-		return ParseResult(False)
-	forms = []
-	while True:
-		skip_whitespace(chars)
-		if _lookahead1(']')(chars).success:
-			break
-		forms.append(parse_form(chars).result)
-	return ParseResult(True, Array(forms))
+	return ParseResult(True, List(forms))
 
 
 @_component_parser
