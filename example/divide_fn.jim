@@ -5,7 +5,6 @@
 	(while (<= y r)
 		(def r (- r y))
 		(def q (+ q 1)))
-	(print q)
-	(print r)))
+	(list q r)))
 
-(divide 100 8)
+(print (divide 100 8))
