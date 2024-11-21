@@ -1,6 +1,6 @@
-import jim.objects
+import jim.objects as lang
 import jim.executor.interpreter as interpreter
-import jim.executor.builtins as jimlang
+import jim.executor.builtins as builtins
 
 
 class Execution:
@@ -47,10 +47,10 @@ class UserFunction(Function):
 		self.parent_context = parent_context
 
 	def context(self, locals):
-		return interpreter.Context(self.parent_context, **locals)
+		return interpreter.Context(self.parent_context, locals)
 
 	def evaluate(self, context, **locals):
-		last = jimlang.nil
+		last = builtins.nil
 		for form in self.code:
 			last = interpreter.evaluate(form)
 		return last
@@ -59,7 +59,7 @@ class UserFunction(Function):
 class ArgumentMismatchError(Exception):
 	pass
 
-def fill_parameters(parameter_spec, arguments) -> dict[str, jim.objects.Form]:
+def fill_parameters(parameter_spec, arguments) -> dict[str, lang.Form]:
 	params = dict()  # collects arguments to match up with parameters
 	arg_idx = 0
 
@@ -71,7 +71,7 @@ def fill_parameters(parameter_spec, arguments) -> dict[str, jim.objects.Form]:
 			else:
 				raise ArgumentMismatchError
 		elif isinstance(p, list):  # rest
-			params[p[0]] = jim.objects.List(arguments[arg_idx:])
+			params[p[0]] = lang.List(arguments[arg_idx:])
 			arg_idx += len(params[p[0]])
 
 	if arg_idx != len(arguments):

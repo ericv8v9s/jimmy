@@ -124,8 +124,9 @@ class Let(jexec.Execution):
 				raise errors.JimmyError("Definition target is not an identifier.", k)
 			bindings[k.value] = interpreter.evaluate(v)
 
-		with interpreter.switch_context(interpreter.Context(context, **bindings)):
+		with interpreter.switch_context(interpreter.Context(context, bindings)):
 			return interpreter.evaluate(_wrap_progn(forms))
+
 
 @builtin_symbol("fn")
 class Function(jexec.Execution):
@@ -143,8 +144,11 @@ class Function(jexec.Execution):
 				case _:
 					raise errors.JimmyError(
 							"The parameter specification is invalid.", param_spec)
-		return jexec.UserFunction(param_spec_parsed, body, context)
 
+		closure = context.copy()
+		function = jexec.UserFunction(param_spec_parsed, body, closure)
+		closure["recur"] = function
+		return function
 
 
 @builtin_symbol("apply")

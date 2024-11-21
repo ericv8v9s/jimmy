@@ -7,9 +7,9 @@ from jim.objects import *
 
 
 class Context:
-	def __init__(self, enclosing_context, **bindings):
+	def __init__(self, enclosing_context, bindings={}):
 		self.enclosing_context = enclosing_context
-		self.symbol_table = dict(**bindings)
+		self.symbol_table = dict(bindings)
 
 	def lookup(self, name):
 		try:
@@ -29,7 +29,7 @@ class Context:
 		return iter(self.symbol_table.items())
 
 	def copy(self):
-		return Context(self.enclosing_context, **self.symbol_table)
+		return Context(self.enclosing_context, self.symbol_table)
 
 
 class Stackframe:
