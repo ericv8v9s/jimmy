@@ -1,4 +1,4 @@
-import jim.executor.interpreter as interpreter
+import jim.evaluator.evaluator as evaluator
 
 
 #In calling
@@ -14,10 +14,10 @@ import jim.executor.interpreter as interpreter
 class JimmyError(Exception):
 	def __init__(self, msg, offending_form=None):
 		super().__init__()
-		self.stackframes = list(interpreter.iter_stack())
+		self.stackframes = list(evaluator.iter_stack())
 		self.msg = msg
 		if offending_form is None:
-			offending_form = interpreter.top_frame.call_form
+			offending_form = evaluator.top_frame.call_form
 		self.offending_form = offending_form
 
 class UndefinedVariableError(JimmyError):

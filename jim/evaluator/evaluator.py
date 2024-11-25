@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 
-import jim.executor.builtins as jimlang
-import jim.executor.execution as jexec
+import jim.evaluator.builtins as jimlang
+import jim.evaluator.execution as jexec
 from .errors import *
 from jim.objects import *
 

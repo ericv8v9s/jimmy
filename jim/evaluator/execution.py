@@ -1,6 +1,6 @@
 import jim.objects as lang
-import jim.executor.interpreter as interpreter
-import jim.executor.builtins as builtins
+import jim.evaluator.evaluator as evaluator
+import jim.evaluator.builtins as builtins
 
 
 class Execution:
@@ -14,12 +14,12 @@ class Execution:
 		Different types of executions will requrie different contexts
 		(e.g. functions care about closures).
 		"""
-		return interpreter.top_frame.context
+		return evaluator.top_frame.context
 
 	def evaluate(self, context, **locals):
 		# Technically, we don't need locals, as that can exist as another context
 		# on top of the provided context.
-		# However, every execution defines a parameter_spec and the interpreter
+		# However, every execution defines a parameter_spec and the evaluator
 		# already matched up all the arguments before calling evaluate,
 		# so as a convenience it is passed on into here.
 		# For most builtin executions, this is handy.
@@ -47,12 +47,12 @@ class UserFunction(Function):
 		self.parent_context = parent_context
 
 	def context(self, locals):
-		return interpreter.Context(self.parent_context, locals)
+		return evaluator.Context(self.parent_context, locals)
 
 	def evaluate(self, context, **locals):
 		last = builtins.nil
 		for form in self.code:
-			last = interpreter.evaluate(form)
+			last = evaluator.evaluate(form)
 		return last
 
 

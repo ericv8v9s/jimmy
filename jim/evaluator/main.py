@@ -1,7 +1,7 @@
 def main(argv):
 	import sys
 	from jim import reader, main
-	from .interpreter import evaluate
+	from .evaluator import evaluate
 	from .errors import JimmyError, format_error
 
 	match argv:

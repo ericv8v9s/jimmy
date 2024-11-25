@@ -1,6 +1,6 @@
-import jim.executor.execution as jexec
-import jim.executor.interpreter as interpreter
-import jim.executor.errors as errors
+import jim.evaluator.execution as jexec
+import jim.evaluator.evaluator as evaluator
+import jim.evaluator.errors as errors
 from jim.objects import *
 
 from functools import reduce
@@ -58,7 +58,7 @@ def flatten(coll):
 
 def function_execution(*param_spec, conversion=lambda x: x):
 	"""
-	Decorates a function to be an executor.Function class,
+	Decorates a function to be an execution.Function class,
 	passing through the param_spec to init and using the function
 	as the evaluate implementation.
 	A conversion function can be specified to be applied to the return value.
@@ -100,7 +100,7 @@ class Definition(jexec.Execution):
 			case _:
 				raise errors.JimmyError("Definition target is not an identifier.", lhs)
 
-		rhs = interpreter.evaluate(rhs)
+		rhs = evaluator.evaluate(rhs)
 		context[lhs] = rhs
 		return rhs
 
@@ -122,10 +122,10 @@ class Let(jexec.Execution):
 			k, v = bindings_raw[i], bindings_raw[i+1]
 			if not isinstance(k, Symbol):
 				raise errors.JimmyError("Definition target is not an identifier.", k)
-			bindings[k.value] = interpreter.evaluate(v)
+			bindings[k.value] = evaluator.evaluate(v)
 
-		with interpreter.switch_context(interpreter.Context(context, bindings)):
-			return interpreter.evaluate(_wrap_progn(forms))
+		with evaluator.switch_context(evaluator.Context(context, bindings)):
+			return evaluator.evaluate(_wrap_progn(forms))
 
 
 @builtin_symbol("fn")
@@ -157,7 +157,7 @@ class Apply(jexec.Macro):
 		super().__init__(["f", "args"])
 
 	def evaluate(self, context, f, args):
-		args_cooked = interpreter.evaluate(args)
+		args_cooked = evaluator.evaluate(args)
 		try:
 			return List([f, *args_cooked])
 		except TypeError:
@@ -172,7 +172,7 @@ class Progn(jexec.Execution):
 	def evaluate(self, context, forms):
 		result = nil
 		for form in forms:
-			result = interpreter.evaluate(form)
+			result = evaluator.evaluate(form)
 		return result
 
 
@@ -188,7 +188,7 @@ class Conditional(jexec.Macro):
 		for b in branches:
 			match b:
 				case List(elements=[test, *body]):
-					if _truthy(interpreter.evaluate(test)):
+					if _truthy(evaluator.evaluate(test)):
 						return _wrap_progn(body)
 				case _:
 					raise errors.JimmyError("Invalid conditional branch.", b)
@@ -202,8 +202,8 @@ class WhileLoop(jexec.Execution):
 	def evaluate(self, context, test, body):
 		result = nil
 		progn_body = _wrap_progn(body)
-		while _truthy(interpreter.evaluate(test)):
-			result = interpreter.evaluate(progn_body)
+		while _truthy(evaluator.evaluate(test)):
+			result = evaluator.evaluate(progn_body)
 		return result
 
 
@@ -304,7 +304,7 @@ class Conjunction(jexec.Execution):
 	def evaluate(self, context, terms):
 		result = True
 		for t in terms:
-			result = interpreter.evaluate(t)
+			result = evaluator.evaluate(t)
 			if not _truthy(result):
 				return result
 		return result
@@ -321,7 +321,7 @@ class Disjunction(jexec.Execution):
 	def evaluate(self, context, terms):
 		result = False
 		for t in terms:
-			result = interpreter.evaluate(t)
+			result = evaluator.evaluate(t)
 			if _truthy(result):
 				return result
 		return result
@@ -419,5 +419,5 @@ def Load(path):
 
 	result = nil
 	for form in forms:
-		result = interpreter.evaluate(form)
+		result = evaluator.evaluate(form)
 	return result
