@@ -1,5 +1,6 @@
 import jim.evaluator.execution as jexec
-import jim.evaluator.evaluator as evaluator
+from jim.evaluator.evaluator import evaluate
+import jim.interpreter.evaluator as interpreter
 import jim.evaluator.errors as errors
 from jim.objects import *
 
@@ -10,7 +11,8 @@ import operator as ops
 # TODO make this immutable (outside this module)
 builtin_symbols = {
 	"True": True,
-	"False": False
+	"False": False,
+	"nil": nil
 }
 
 def builtin_symbol(name):
@@ -19,13 +21,6 @@ def builtin_symbol(name):
 		builtin_symbols[name] = cls()
 		return cls
 	return reg_symbol
-
-
-@builtin_symbol("nil")
-class Nil:
-	def __repr__(self):
-		return "nil"
-nil = builtin_symbols["nil"]
 
 
 def _truthy(v):
@@ -66,7 +61,7 @@ def function_execution(*param_spec, conversion=lambda x: x):
 	def decorator(eval_impl):
 		def __init__(self):
 			super(type(self), self).__init__(param_spec)
-		def evaluate(self, context, **locals):
+		def evaluate(self, calling_context, **locals):
 			return conversion(eval_impl(**locals))
 		# Creates a class of the same name, with Function as parent.
 		return type(evaluate.__name__, (jexec.Function,),
@@ -100,7 +95,7 @@ class Definition(jexec.Execution):
 			case _:
 				raise errors.JimmyError("Definition target is not an identifier.", lhs)
 
-		rhs = evaluator.evaluate(rhs)
+		rhs = evaluate(rhs, context)
 		context[lhs] = rhs
 		return rhs
 
@@ -116,20 +111,32 @@ class Let(jexec.Execution):
 			raise errors.JimmyError("Bindings definition invalid.", bindings)
 
 		bindings_raw = bindings
-		bindings = dict()
+		new_context = interpreter.Context(context)
 
 		for i in range(0, len(bindings_raw), 2):
 			k, v = bindings_raw[i], bindings_raw[i+1]
 			if not isinstance(k, Symbol):
 				raise errors.JimmyError("Definition target is not an identifier.", k)
-			bindings[k.value] = evaluator.evaluate(v)
+			new_context[k.value] = evaluate(v, new_context)
 
-		with evaluator.switch_context(evaluator.Context(context, bindings)):
-			return evaluator.evaluate(_wrap_progn(forms))
+		return evaluate(_wrap_progn(forms), new_context)
 
 
 @builtin_symbol("fn")
 class Function(jexec.Execution):
+	class Instance(jexec.Function):
+		def __init__(self, parameter_spec, code, closure):
+			super().__init__(parameter_spec)
+			self.code = code
+			self.closure = closure
+
+		def evaluate(self, calling_context, **locals):
+			context = interpreter.Context(self.closure, locals)
+			last = nil
+			for form in self.code:
+				last = evaluate(form, context)
+			return last
+
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
 
@@ -146,7 +153,7 @@ class Function(jexec.Execution):
 							"The parameter specification is invalid.", param_spec)
 
 		closure = context.copy()
-		function = jexec.UserFunction(param_spec_parsed, body, closure)
+		function = Function.Instance(param_spec_parsed, body, closure)
 		closure["recur"] = function
 		return function
 
@@ -157,7 +164,7 @@ class Apply(jexec.Macro):
 		super().__init__(["f", "args"])
 
 	def evaluate(self, context, f, args):
-		args_cooked = evaluator.evaluate(args)
+		args_cooked = evaluate(args, context)
 		try:
 			return List([f, *args_cooked])
 		except TypeError:
@@ -172,7 +179,7 @@ class Progn(jexec.Execution):
 	def evaluate(self, context, forms):
 		result = nil
 		for form in forms:
-			result = evaluator.evaluate(form)
+			result = evaluate(form, context)
 		return result
 
 
@@ -188,7 +195,7 @@ class Conditional(jexec.Macro):
 		for b in branches:
 			match b:
 				case List(elements=[test, *body]):
-					if _truthy(evaluator.evaluate(test)):
+					if _truthy(evaluate(test, context)):
 						return _wrap_progn(body)
 				case _:
 					raise errors.JimmyError("Invalid conditional branch.", b)
@@ -202,8 +209,8 @@ class WhileLoop(jexec.Execution):
 	def evaluate(self, context, test, body):
 		result = nil
 		progn_body = _wrap_progn(body)
-		while _truthy(evaluator.evaluate(test)):
-			result = evaluator.evaluate(progn_body)
+		while _truthy(evaluate(test, context)):
+			result = evaluate(progn_body, context)
 		return result
 
 
@@ -304,7 +311,7 @@ class Conjunction(jexec.Execution):
 	def evaluate(self, context, terms):
 		result = True
 		for t in terms:
-			result = evaluator.evaluate(t)
+			result = evaluate(t, context)
 			if not _truthy(result):
 				return result
 		return result
@@ -321,7 +328,7 @@ class Disjunction(jexec.Execution):
 	def evaluate(self, context, terms):
 		result = False
 		for t in terms:
-			result = evaluator.evaluate(t)
+			result = evaluate(t, context)
 			if _truthy(result):
 				return result
 		return result
@@ -419,5 +426,11 @@ def Load(path):
 
 	result = nil
 	for form in forms:
-		result = evaluator.evaluate(form)
+		result = interpreter.evaluate(form)
 	return result
+
+
+@builtin_symbol("__debug__")
+@function_execution()
+def DebuggerTrigger():
+	breakpoint()

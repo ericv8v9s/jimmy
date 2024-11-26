@@ -1,4 +1,4 @@
-from jim import evaluator, checker
+from jim import interpreter, checker
 
 
 def print_usage():
@@ -10,9 +10,9 @@ def print_usage():
 def main(argv):
 	match argv:
 		case [name]:
-			evaluator.main([])
+			interpreter.main([])
 		case [name, "run", *rest]:
-			evaluator.main(rest)
+			interpreter.main(rest)
 		case [name, "check", *rest]:
 			checker.main(rest)
 		case [name, *args]:

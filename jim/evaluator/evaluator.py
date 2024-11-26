@@ -1,69 +1,29 @@
+from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
-import jim.evaluator.builtins as jimlang
 import jim.evaluator.execution as jexec
 from .errors import *
 from jim.objects import *
 
 
-class Context:
-	def __init__(self, enclosing_context, bindings={}):
-		self.enclosing_context = enclosing_context
-		self.symbol_table = dict(bindings)
-
-	def lookup(self, name):
-		try:
-			return self.symbol_table[name]
-		except KeyError as e:
-			if self.enclosing_context is not None:
-				return self.enclosing_context.lookup(name)
-			raise UndefinedVariableError(name) from e
-
-	def __getitem__(self, key):
-		return self.symbol_table[key]
-
+class AbstractContext(ABC):
+	@abstractmethod
+	def __init__(self, parent, bindings={}):
+		pass
+	@abstractmethod
+	def __getitem__(self, name):
+		pass
+	@abstractmethod
 	def __setitem__(self, key, val):
-		self.symbol_table[key] = val
-
-	def __iter__(self):
-		return iter(self.symbol_table.items())
-
-	def copy(self):
-		return Context(self.enclosing_context, self.symbol_table)
+		pass
 
 
 class Stackframe:
-	def __init__(self, last_frame, call_form, base_context):
+	def __init__(self, last_frame, call_form):
 		self.last_frame = last_frame
 		self.call_form = call_form
-		self.context = base_context
 
-	def push_context(self):
-		self.context = Context(self.context)
-	def pop_context(self):
-		self.context = self.context.enclosing_context
-
-	@contextmanager
-	def new_context(self):
-		self.push_context()
-		try:
-			yield self.context
-		finally:
-			self.pop_context()
-
-	@contextmanager
-	def switch_context(self, context):
-		saved = self.context
-		self.context = context
-		try:
-			yield context
-		finally:
-			self.context = saved
-
-
-top_frame = Stackframe(None, "base frame", Context(None))
-# initialize builtins
-top_frame.context.symbol_table.update(jimlang.builtin_symbols)
+top_frame = Stackframe(None, "base frame")
 
 
 def iter_stack():
@@ -74,10 +34,10 @@ def iter_stack():
 
 
 @contextmanager
-def push_new_frame(call_form, base_context):
+def push_new_frame(call_form):
 	#print(f"DEBUG: PUSH: {call_form}")
 	global top_frame
-	top_frame = Stackframe(top_frame, call_form, base_context)
+	top_frame = Stackframe(top_frame, call_form)
 	try:
 		yield top_frame
 	except:
@@ -87,27 +47,27 @@ def push_new_frame(call_form, base_context):
 		#print(f"DEBUG: POP: {call_form}")
 
 
-def switch_context(context):
-	return top_frame.switch_context(context)
-
-
-def evaluate(obj):
-	"""Computes a value for the form parsed by reader."""
+def evaluate(obj, context):
+	"""
+	Evaluates a form under the specified context.
+	Returns the evaluated value; the context may be mutated as part of evaluation.
+	"""
 
 	#print(f"DEBUG: evaluate: {obj}")
 
+	import jim.objects  # specifically for the nil match below
 	match obj:
 		# These objects are self-evaluating.
-		case Integer() | String() | jexec.Execution() | jimlang.nil:
+		case Integer() | String() | jexec.Execution() | jim.objects.nil:
 			return obj
 
 		case Symbol(value=name):
-			return top_frame.context.lookup(name)
+			return context[name]
 
 		case List():
 			if len(obj) == 0:
-				return jimlang.nil
-			return invoke(obj)
+				return nil
+			return invoke(obj, context)
 
 		case _:
 			for i, frame in enumerate(reversed(list(iter_stack()))):
@@ -116,15 +76,15 @@ def evaluate(obj):
 			assert False  # We should never see raw python object.
 
 
-def invoke(lst):
-	execution = evaluate(lst[0])
+def invoke(lst, context):
+	execution = evaluate(lst[0], context)
 	args = lst[1:]
 
 	if not isinstance(execution, jexec.Execution):
 		raise JimmyError("Invocation target is invalid.", lst)
 
 	if isinstance(execution, jexec.EvaluateIn):
-		args = map(evaluate, args)
+		args = map(lambda arg: evaluate(arg, context), args)
 
 	#print(f"DEBUG: invoke: {lst}")
 
@@ -136,11 +96,10 @@ def invoke(lst):
 	# The context should be determined by execution:
 	# def form needs context to be the outer context,
 	# function calls need to switch to the function closure.
-	context = execution.context(matched_params)
-	with push_new_frame(lst, context) as f:
+	with push_new_frame(lst):
 		result = execution.evaluate(context, **matched_params)
 
 	if isinstance(execution, jexec.EvaluateOut):
-		return evaluate(result)
+		return evaluate(result, context)
 	else:
 		return result

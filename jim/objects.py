@@ -42,6 +42,16 @@ class Atom(_ValueMixin, Form):
 	def __init__(self, value):
 		super().__init__(value=value)
 
+class _Nil(Form):
+	"""Special singleton nil object."""
+	def __repr__(self):
+		return "nil"
+	def __hash__(self):
+		return 0
+	def __eq__(self, other):
+		return self is other
+nil = _Nil()
+
 class Integer(Atom):
 	pass
 
@@ -138,3 +148,4 @@ __all__ = [x.__name__ for x in [
 	List,
 	Comment
 ]]
+__all__.append("nil")

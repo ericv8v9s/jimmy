@@ -2,7 +2,7 @@ def main(argv):
 	import sys
 	from jim import reader, main
 	from .evaluator import evaluate
-	from .errors import JimmyError, format_error
+	from jim.evaluator.errors import JimmyError, format_error
 
 	match argv:
 		case []:  # interactive mode

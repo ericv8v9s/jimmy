@@ -1,6 +1,4 @@
 import jim.objects as lang
-import jim.evaluator.evaluator as evaluator
-import jim.evaluator.builtins as builtins
 
 
 class Execution:
@@ -8,15 +6,7 @@ class Execution:
 		# (fn (x y (rest)) body...)
 		self.parameter_spec = parameter_spec
 
-	def context(self, locals):
-		"""
-		The context to evaluate this execution in.
-		Different types of executions will requrie different contexts
-		(e.g. functions care about closures).
-		"""
-		return evaluator.top_frame.context
-
-	def evaluate(self, context, **locals):
+	def evaluate(self, calling_context, **locals):
 		# Technically, we don't need locals, as that can exist as another context
 		# on top of the provided context.
 		# However, every execution defines a parameter_spec and the evaluator
@@ -38,22 +28,6 @@ class Function(Execution, EvaluateIn):
 class Macro(Execution, EvaluateOut):
 	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
-
-
-class UserFunction(Function):
-	def __init__(self, parameter_spec, code, parent_context):
-		super().__init__(parameter_spec)
-		self.code = code
-		self.parent_context = parent_context
-
-	def context(self, locals):
-		return evaluator.Context(self.parent_context, locals)
-
-	def evaluate(self, context, **locals):
-		last = builtins.nil
-		for form in self.code:
-			last = evaluator.evaluate(form)
-		return last
 
 
 class ArgumentMismatchError(Exception):
