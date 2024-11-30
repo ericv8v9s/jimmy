@@ -3,6 +3,7 @@ from jim.evaluator.evaluator import evaluate
 import jim.interpreter.evaluator as interpreter
 import jim.evaluator.errors as errors
 from jim.objects import *
+import jim.objects as objects
 
 from functools import reduce
 import operator as ops
@@ -144,13 +145,19 @@ class Function(jexec.Execution):
 		param_spec_parsed = []
 		for p in param_spec:
 			match p:
-				case Symbol(value=symbol):  # positional
-					param_spec_parsed.append(symbol)
-				case List(elements=[Symbol(value=symbol)]):  # rest
-					param_spec_parsed.append([symbol])
+				case Symbol(value=name):  # positional
+					param_spec_parsed.append(name)
+				case List(elements=[Symbol(value=name)]):  # rest
+					param_spec_parsed.append([name])
+				case List(elements=[Symbol(value=name), Form() as default]):  # optional
+					default = evaluate(default, context)
+					if objects.is_mutable(default):
+						raise JimmyError("Default argument cannot be or contain a mutable object.")
+					else:
+						param_spec_parsed.append([name, default])
 				case _:
 					raise errors.JimmyError(
-							"The parameter specification is invalid.", param_spec)
+							"The parameter specification is invalid.", p)
 
 		closure = context.copy()
 		function = Function.Instance(param_spec_parsed, body, closure)
@@ -181,25 +188,6 @@ class Progn(jexec.Execution):
 		for form in forms:
 			result = evaluate(form, context)
 		return result
-
-
-@builtin_symbol("cond")
-class Conditional(jexec.Macro):
-	def __init__(self):
-		# (cond
-		#   ((test1) things...)
-		#   ((test2) things...))
-		super().__init__([["branches"]])
-
-	def evaluate(self, context, branches):
-		for b in branches:
-			match b:
-				case List(elements=[test, *body]):
-					if _truthy(evaluate(test, context)):
-						return _wrap_progn(body)
-				case _:
-					raise errors.JimmyError("Invalid conditional branch.", b)
-		return nil
 
 
 @builtin_symbol("while")
@@ -340,6 +328,17 @@ def Negation(p):
 	return not _truthy(p)
 
 
+# TODO Merge this with cond when optional param is implemented.
+@builtin_symbol("if")
+class Implication(jexec.Macro):
+	def __init__(self):
+		super().__init__(["cond", "success", ["fail", True]])
+	def evaluate(self, context, cond, success, fail):
+		if _truthy(evaluate(cond, context)):
+			return success
+		return fail
+
+
 @builtin_symbol("print")
 @function_execution("msg")
 def Print(msg):
@@ -351,6 +350,11 @@ def Print(msg):
 @function_execution(["elements"])
 def MakeList(elements):
 	return List(elements)
+
+@builtin_symbol("mlist")
+@function_execution(["elements"])
+def MakeMutableList(elements):
+	return MutableList(elements)
 
 
 @builtin_symbol("list?")
@@ -396,6 +400,8 @@ def Associate(lst, idx, val):
 @builtin_symbol("assoc!")
 @function_execution("lst", "idx", "val")
 def MutatingAssociate(lst, idx, val):
+	if not isinstance(lst, MutableList):
+		raise errors.JimmyError("Provided list is not mutable.")
 	idx = _unwrap_int(idx)
 	try:
 		lst[idx % len(lst)] = val
@@ -424,10 +430,9 @@ def Load(path):
 	except OSError as e:
 		raise errors.LoadError(e)
 
-	result = nil
 	for form in forms:
-		result = interpreter.evaluate(form)
-	return result
+		interpreter.evaluate(form)
+	return nil
 
 
 @builtin_symbol("__debug__")

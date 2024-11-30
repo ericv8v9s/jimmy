@@ -23,7 +23,7 @@ class Stackframe:
 		self.last_frame = last_frame
 		self.call_form = call_form
 
-top_frame = Stackframe(None, "base frame")
+top_frame = None
 
 
 def iter_stack():
@@ -58,7 +58,8 @@ def evaluate(obj, context):
 	import jim.objects  # specifically for the nil match below
 	match obj:
 		# These objects are self-evaluating.
-		case Integer() | String() | jexec.Execution() | jim.objects.nil:
+		case (True | False | jim.objects.nil
+				| Integer() | String() | jexec.Execution()):
 			return obj
 
 		case Symbol(value=name):
@@ -67,7 +68,12 @@ def evaluate(obj, context):
 		case List():
 			if len(obj) == 0:
 				return nil
-			return invoke(obj, context)
+			try:
+				return invoke(obj, context)
+			except JimmyError:
+				raise
+			except Exception as e:
+				raise JimmyError(str(e), obj)
 
 		case _:
 			for i, frame in enumerate(reversed(list(iter_stack()))):
@@ -93,9 +99,6 @@ def invoke(lst, context):
 	except jexec.ArgumentMismatchError:
 		raise ArgumentMismatchError(lst) from None
 
-	# The context should be determined by execution:
-	# def form needs context to be the outer context,
-	# function calls need to switch to the function closure.
 	with push_new_frame(lst):
 		result = execution.evaluate(context, **matched_params)
 

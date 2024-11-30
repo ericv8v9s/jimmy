@@ -1,76 +1,97 @@
-; INPUT
-(assign x 7)
-(assign y 2)
-(assert (and (> x 0) (> y 0)))
+(def divide (fn (x y)
+	[pre (> x 0)]
+	[pre (> y 0)]
 
-[=intr (= x x)]
-(assign r x)
-[assign (= x r)]  [mark lr]
+	(def r x)
+	(def q 0)
 
-[[sub [add0 (= r (+ r 0))] lr] (= x (+ r 0))]  [mark lr]
+	; add0 is the additive identity axiom.
+	; Specifically, it's the derivation
+	; True |- [forall v (if (number? v) (= v (+ v 0)))].
+	; This would be defined as [axiom () [forall v (if (number? v) (= v (+ v 0)))]].
+	; For brevity, we allow the for-all elimination to be omitted.
+	; [AA-elim [add0] r]
+	[[add0] r]
+	; so is the re-iteration rule; simply states something already shown.
+	[so (= r (+ r 0))]
+	; Because we have shown this equality from add0, the resolutions of r
+	; and (+ r 0) are merged to be the same value.
+	[so (= x (+ r 0))]
+	; We have this because we just got (= r (+ r 0)) from add0,
+	; and r and x resolves to the same value.
 
-[[sub [mult0 (= 0 (* 0 y))] lr] (= x (+ r (* 0 y)))]  [mark lr]
+	; mult0 is the axiom for (= 0 (* 0 v))
+	; ~last~ is a special name that refers to the last truth obtained.
+	; In a fresh context with no result, ~last~ would be unbound.
+	[sub [[mult0] y] ~last~]
+	; A sub is only allowed on results that are known to be true,
+	; so all rules (e.g. the call to mult0) must automatically add its own result
+	; to the context.
 
-[=intr (= 0 0)]
-(assign q 0)
-[assign (= 0 q)]
-[[sub (= 0 q) lr] (= x (+ r (* q y)))]  [mark invar]
+	[def div-prop (= x (+ r (* q y)))]
+	; We have this because q resolves to 0.
+	; def in [] context associates a truth with a name.
+	; These names do not participate in normal name lookup.
+	; Naturally, the result given must already be shown in the context.
 
+	[show-proof-state before-while]
 
-(while (<= y r)
-	[assume (= x (+ r (* q y)))]  [mark invar]
-	[show_proof_state begin-while]
+	(while (<= y r)
+		[invar (= x (+ r (* q y)))]
+		[show-proof-state begin-while]
 
-	[[sub [add0 (= r (+ r 0))] invar] (= x (+ (+ r 0) (* q y)))]  [mark invar]
-	[[sub [subt0 (= 0 (- y y))] invar]
-			(= x (+ (+ r (- y y)) (* q y)))]  [mark invar]
-	[[sub [-+ (= (- y y) (+ y (- y)))] invar]
-		(= x (+ (+ r (+ y (- y))) (* q y)))]  [mark invar]
-	[+assoc (= (+ (+ r (+ y (- y))) (* q y)) (+ r y (- y) (* q y)))]  [mark lr]
-	[[sub lr invar] (= x (+ r y (- y) (* q y)))]  [mark invar]
+		[sub [add0 r] (= x (+ r (* q y)))]
+		[sub [subt0 y] ~last~]
+		[sub [-+ y] ~last~]
+		[+flatten 
+		[so (= x (+ (+ r (+ y (- y))) (* q y)))]
 
-	[+comm (= (+ r y (- y) (* q y)) (+ r (- y) y (* q y)))]  [mark lr]
-	[[sub lr invar] (= x (+ r (- y) y (* q y)))]  [mark invar]
+		[[sub [add0 (= r (+ r 0))] invar] (= x (+ (+ r 0) (* q y)))]  [mark invar]
+		[[sub [subt0 (= 0 (- y y))] invar]
+				(= x (+ (+ r (- y y)) (* q y)))]  [mark invar]
+		[[sub [-+ (= (- y y) (+ y (- y)))] invar]
+			(= x (+ (+ r (+ y (- y))) (* q y)))]  [mark invar]
+		[+assoc (= (+ (+ r (+ y (- y))) (* q y)) (+ r y (- y) (* q y)))]  [mark lr]
+		[[sub lr invar] (= x (+ r y (- y) (* q y)))]  [mark invar]
 
-	[+assoc (= (+ r (- y) y (* q y)) (+ (+ r (- y)) y (* q y)))]  [mark lr]
-	[[sub lr invar] (= x (+ (+ r (- y)) y (* q y)))]  [mark invar]
+		[+comm (= (+ r y (- y) (* q y)) (+ r (- y) y (* q y)))]  [mark lr]
+		[[sub lr invar] (= x (+ r (- y) y (* q y)))]  [mark invar]
 
-	[-+ (= (- r y) (+ r (- y)))]
-	[=flip (= (+ r (- y)) (- r y))]  [mark lr]
-	[[sub lr invar] (= x (+ (- r y) y (* q y)))]  [mark invar]
+		[+assoc (= (+ r (- y) y (* q y)) (+ (+ r (- y)) y (* q y)))]  [mark lr]
+		[[sub lr invar] (= x (+ (+ r (- y)) y (* q y)))]  [mark invar]
 
-	[show_proof_state update-r]
+		[-+ (= (- r y) (+ r (- y)))]
+		[=flip (= (+ r (- y)) (- r y))]  [mark lr]
+		[[sub lr invar] (= x (+ (- r y) y (* q y)))]  [mark invar]
 
-	(assign r (- r y))
-	[assign (= x (+ r y (* q y)))]  [mark crit]
+		[show-proof-state update-r]
 
-	[[sub [mult1 (= y (* y 1))] crit]
-			(= x (+ r (* y 1) (* q y)))]  [mark crit]
-	[[sub [*comm (= (* q y) (* y q))] crit]
-			(= x (+ r (* y 1) (* y q)))]  [mark crit]
+		(def r (- r y))
+		[def (= x (+ r y (* q y)))]  [mark crit]
 
-	[+assoc (= (+ r (* y 1) (* y q)) (+ r (+ (* y 1) (* y q))))]  [mark lr]
-	[[sub lr crit] (= x (+ r (+ (* y 1) (* y q))))]  [mark crit]
+		[[sub [mult1 (= y (* y 1))] crit]
+				(= x (+ r (* y 1) (* q y)))]  [mark crit]
+		[[sub [*comm (= (* q y) (* y q))] crit]
+				(= x (+ r (* y 1) (* y q)))]  [mark crit]
 
-	[*distr (= (* y (+ 1 q)) (+ (* y 1) (* y q)))]
-	[=flip (= (+ (* y 1) (* y q)) (* y (+ 1 q)))]  [mark lr]
-	[[sub lr crit] (= x (+ r (* y (+ 1 q))))]  [mark crit]
+		[+assoc (= (+ r (* y 1) (* y q)) (+ r (+ (* y 1) (* y q))))]  [mark lr]
+		[[sub lr crit] (= x (+ r (+ (* y 1) (* y q))))]  [mark crit]
 
-	[[sub [+comm (= (+ 1 q) (+ q 1))] crit]
-			(= x (+ r (* y (+ q 1))))] [mark crit]
+		[*distr (= (* y (+ 1 q)) (+ (* y 1) (* y q)))]
+		[=flip (= (+ (* y 1) (* y q)) (* y (+ 1 q)))]  [mark lr]
+		[[sub lr crit] (= x (+ r (* y (+ 1 q))))]  [mark crit]
 
-	[show_proof_state update-q]
+		[[sub [+comm (= (+ 1 q) (+ q 1))] crit]
+				(= x (+ r (* y (+ q 1))))] [mark crit]
 
-	(assign q (+ q 1))
-	[assign (= x (+ r (* y q)))]  [mark invar]
-	[[sub [*comm (= (* y q) (* q y))] invar]
-			(= x (+ r (* q y)))]  ; we have loop invariant again
-	[show_proof_state end-while])
+		[show-proof-state update-q]
 
-[show_proof_state before-while]
+		(def q (+ q 1))
+		[def (= x (+ r (* y q)))]  [mark invar]
+		[[sub [*comm (= (* y q) (* q y))] invar]
+				(= x (+ r (* q y)))]  ; we have loop invariant again
+		[show-proof-state end-while])
+	[thus (and (not (<= y r)) (= x (+ r (* q y))))]
 
-[while (and (not (<= y r)) (= x (+ r (* q y))))]
-
-; OUTPUT
-(print q)
-(print r)
+(list q r)
+[post (= x (+ r (* q y)))]))

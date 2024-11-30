@@ -1,11 +1,10 @@
 (def reduce (fn (combine initial values)
-	(cond
-		((> (count values) 0)
-			(recur
-				combine
-				(combine initial (get values 0))
-				(rest values)))
-		(True initial))))
+	(if (> (count values) 0)
+		(recur
+			combine
+			(combine initial (get values 0))
+			(rest values))
+		initial)))
 
 
 (def map (fn (f lst)

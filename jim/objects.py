@@ -71,11 +71,15 @@ class List(list, Form):
 	def __init__(self, elements=None):
 		list.__init__(self, [] if elements is None else elements)
 		LanguageObject.__init__(self)
-		self.elements = self
+		self.elements = self  # to make this work with match statements
 	def __repr__(self):
 		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
 		return repr(self)
+
+class MutableList(List):
+	def __init__(self, elements=None):
+		super().__init__(elements)
 
 
 class Comment(_ValueMixin, LanguageObject):
@@ -142,10 +146,19 @@ def tree_equal(u, v, eq=lambda u, v: u == v):
 		return False
 
 
+def is_mutable(form):
+	"""A form is considered mutable if any part of it could be mutated."""
+	if isinstance(form, MutableList):
+		return True
+	if is_leaf(form):
+		return False
+	return any(map(is_mutable, form))
+
+
 __all__ = [x.__name__ for x in [
 	LanguageObject, Form,
 	Atom, Integer, Symbol, String,
-	List,
+	List, MutableList,
 	Comment
 ]]
 __all__.append("nil")

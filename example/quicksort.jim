@@ -8,8 +8,8 @@
 	(def i (- p 1))
 	(def j p)
 	(while (<= j (- r 1))
-		(cond
-			((<= (get A j) x)
+		(if (<= (get A j) x)
+			(progn
 				(def i (+ i 1))
 				(list-exchange A i j)))
 		(def j (+ j 1)))
@@ -17,11 +17,10 @@
 	(+ i 1)))
 
 (def quicksort (fn (A p r)
-	(cond
-		((< p r)
-			(def q (partition A p r))
-			(recur A p (- q 1))
-			(recur A (+ q 1) r)))))
+	(if (< p r)
+		(def q (partition A p r))
+		(recur A p (- q 1))
+		(recur A (+ q 1) r))))
 
 
 (def l (list 9 8 3 4 7 0 2 1 6 5))
