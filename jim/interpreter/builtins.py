@@ -190,15 +190,35 @@ class Progn(jexec.Execution):
 		return result
 
 
-@builtin_symbol("while")
-class WhileLoop(jexec.Execution):
+@builtin_symbol("loop")
+class Loop(jexec.Execution):
+	class Instance(jexec.Function):
+		def __init__(self, names, body):
+			self.names = map(str, names)
+			super().__init__(self.names)
+			self.body = body
+			self.alive = True
+
+		def evaluate(self, context, **bindings):
+			if not self.alive:
+				raise errors.JimmyError("Cannot invoke loop iteration outside of loop.")
+			body_context = interpreter.Context(context, bindings)
+			body_context["recur"] = self
+
+			result = nil
+			for form in self.body:
+				result = evaluate(form, body_context)
+
+			for name in self.names:
+				context[name] = body_context[name]
+			return result
+
 	def __init__(self):
-		super().__init__(["test", ["body"]])
-	def evaluate(self, context, test, body):
-		result = nil
-		progn_body = _wrap_progn(body)
-		while _truthy(evaluate(test, context)):
-			result = evaluate(progn_body, context)
+		super().__init__(["names", ["body"]])
+	def evaluate(self, context, names, body):
+		loop = Loop.Instance(names, body)
+		result = evaluate(List([loop, *names]), context)
+		loop.alive = False
 		return result
 
 

@@ -1,4 +1,5 @@
 import jim.evaluator.evaluator as evaluator
+import jim.objects
 from jim.evaluator.errors import UndefinedVariableError
 from .builtins import builtin_symbols
 
@@ -26,4 +27,6 @@ class Context(evaluator.AbstractContext):
 root_context = Context(None, builtin_symbols)
 
 def evaluate(obj):
+	if isinstance(obj, jim.objects.Derivation):
+		return None
 	return evaluator.evaluate(obj, root_context)

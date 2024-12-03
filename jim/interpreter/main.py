@@ -19,7 +19,8 @@ def main(argv):
 
 				try:
 					result = evaluate(form)
-					print("->", repr(result), flush=True)
+					if result is not None:
+						print("->", repr(result), flush=True)
 				except JimmyError as e:
 					print(format_error(e), file=sys.stderr)
 
