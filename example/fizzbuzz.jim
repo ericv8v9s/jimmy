@@ -1,7 +1,9 @@
 (def n 0)
-(while (< n 100)
-	(def n (+ n 1))
-	(print 
-		(if (= 0 (% n 15)) "FizzBuzz"
-		(if (= 0 (% n 3)) "Fizz"
-		(if (= 0 (% n 5)) "Buzz" n)))))
+(loop (n)
+	(if (< n 100)
+		(progn
+			(print 
+				(if (= 0 (% n 15)) "FizzBuzz"
+				(if (= 0 (% n 3)) "Fizz"
+				(if (= 0 (% n 5)) "Buzz" n))))
+			(recur (+ n 1)))))
