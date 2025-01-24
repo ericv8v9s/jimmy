@@ -29,6 +29,9 @@ def _truthy(v):
 
 
 def _wrap_progn(forms):
+	if len(forms) == 1:
+		return forms[0]
+	# also handles edge case of 0 forms
 	return List([Symbol("progn"), *forms])
 
 
@@ -133,10 +136,7 @@ class Function(jexec.Execution):
 
 		def evaluate(self, calling_context, **locals):
 			context = interpreter.Context(self.closure, locals)
-			last = nil
-			for form in self.code:
-				last = evaluate(form, context)
-			return last
+			return evaluate(self.code, context)
 
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
@@ -160,7 +160,7 @@ class Function(jexec.Execution):
 							"The parameter specification is invalid.", p)
 
 		closure = context.copy()
-		function = Function.Instance(param_spec_parsed, body, closure)
+		function = Function.Instance(param_spec_parsed, _wrap_progn(body), closure)
 		closure["recur"] = function
 		return function
 
@@ -205,9 +205,7 @@ class Loop(jexec.Execution):
 			body_context = interpreter.Context(context, bindings)
 			body_context["recur"] = self
 
-			result = nil
-			for form in self.body:
-				result = evaluate(form, body_context)
+			result = evaluate(self.body, body_context)
 
 			for name in self.names:
 				context[name] = body_context[name]
@@ -216,7 +214,7 @@ class Loop(jexec.Execution):
 	def __init__(self):
 		super().__init__(["names", ["body"]])
 	def evaluate(self, context, names, body):
-		loop = Loop.Instance(names, body)
+		loop = Loop.Instance(names, _wrap_progn(body))
 		result = evaluate(List([loop, *names]), context)
 		loop.alive = False
 		return result
