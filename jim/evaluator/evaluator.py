@@ -61,45 +61,11 @@ def push_new_frame(call_form):
 		#debug(f"POP: {call_form}")
 
 
-def evaluate(obj, context):
+def invoke(lst, evaluate, context):
 	"""
-	Evaluates a form under the specified context.
-	Returns the evaluated value; the context may be mutated as part of evaluation.
+	Invokes the List form lst using the provided evaluation function
+	in the given context.
 	"""
-
-	#debug(f"evaluate: {obj}")
-
-	match obj:
-		case Symbol(value=name):
-			return context[name]
-
-		# Other atoms are self-evaluating objects.
-		case Atom():
-			return obj
-
-		case List():
-			if len(obj) == 0:
-				return nil
-			try:
-				return invoke(obj, context)
-			except JimmyError:
-				raise
-			except Exception as e:
-				# Take the first one that isn't empty.
-				raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
-
-		case None:
-			# Special case: None means a no-op.
-			return None
-
-		case _:
-			for i, frame in enumerate(reversed(list(iter_stack()))):
-				debug(f"{i}: {frame.call_form}")
-			debug(f"raw object: {obj}")
-			assert False  # We should never see raw python object.
-
-
-def invoke(lst, context):
 	execution = evaluate(lst[0], context)
 	args = lst[1:]
 

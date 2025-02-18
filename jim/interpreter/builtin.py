@@ -1,5 +1,4 @@
 import jim.evaluator.execution as jexec
-from jim.evaluator.evaluator import evaluate
 import jim.interpreter.evaluator as interpreter
 import jim.evaluator.errors as errors
 from jim.objects import *
@@ -103,7 +102,7 @@ class Definition(Execution):
 			case _:
 				raise errors.JimmyError("Definition target is not an identifier.", lhs)
 
-		rhs = evaluate(rhs, context)
+		rhs = interpreter.evaluate(rhs, context)
 		context[lhs] = rhs
 		return rhs
 
@@ -125,9 +124,9 @@ class Let(Execution):
 			k, v = bindings_raw[i], bindings_raw[i+1]
 			if not isinstance(k, Symbol):
 				raise errors.JimmyError("Definition target is not an identifier.", k)
-			new_context[k.value] = evaluate(v, new_context)
+			new_context[k.value] = interpreter.evaluate(v, new_context)
 
-		return evaluate(_wrap_progn(forms), new_context)
+		return interpreter.evaluate(_wrap_progn(forms), new_context)
 
 
 @builtin_symbol("fn")
@@ -139,7 +138,7 @@ class Function(Execution):
 			self.closure = closure
 
 		def evaluate(self, calling_context, **locals):
-			return evaluate(self.code, self.closure.new_child(locals))
+			return interpreter.evaluate(self.code, self.closure.new_child(locals))
 
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
@@ -153,7 +152,7 @@ class Function(Execution):
 				case List(elements=[Symbol(value=name)]):  # rest
 					param_spec_parsed.append([name])
 				case List(elements=[Symbol(value=name), Form() as default]):  # optional
-					default = evaluate(default, context)
+					default = interpreter.evaluate(default, context)
 					if objects.is_mutable(default):
 						raise JimmyError("Default argument cannot be or contain a mutable object.")
 					else:
@@ -194,7 +193,7 @@ class Apply(jexec.Macro):
 		super().__init__(["f", "args"])
 
 	def evaluate(self, context, f, args):
-		args_cooked = evaluate(args, context)
+		args_cooked = interpreter.evaluate(args, context)
 		try:
 			return List([f, *args_cooked])
 		except TypeError:
@@ -209,7 +208,7 @@ class Progn(Execution):
 	def evaluate(self, context, forms):
 		result = nil
 		for form in forms:
-			result = evaluate(form, context)
+			result = interpreter.evaluate(form, context)
 		return result
 
 
@@ -228,7 +227,7 @@ class Loop(Execution):
 			body_context = context.new_child(bindings)
 			body_context["recur"] = self
 
-			result = evaluate(self.body, body_context)
+			result = interpreter.evaluate(self.body, body_context)
 
 			for name in self.names:
 				context[name] = body_context[name]
@@ -238,7 +237,7 @@ class Loop(Execution):
 		super().__init__(["names", ["body"]])
 	def evaluate(self, context, names, body):
 		loop = Loop.Instance(names, _wrap_progn(body))
-		result = evaluate(List([loop, *names]), context)
+		result = interpreter.evaluate(List([loop, *names]), context)
 		loop.alive = False
 		return result
 
@@ -340,7 +339,7 @@ class Conjunction(Execution):
 	def evaluate(self, context, terms):
 		result = true
 		for t in terms:
-			result = evaluate(t, context)
+			result = interpreter.evaluate(t, context)
 			if not _truthy(result):
 				return result
 		return result
@@ -357,7 +356,7 @@ class Disjunction(Execution):
 	def evaluate(self, context, terms):
 		result = false
 		for t in terms:
-			result = evaluate(t, context)
+			result = interpreter.evaluate(t, context)
 			if _truthy(result):
 				return result
 		return result
@@ -375,7 +374,7 @@ class Implication(jexec.Macro):
 	def __init__(self):
 		super().__init__(["cond", "success", ["fail", true]])
 	def evaluate(self, context, cond, success, fail):
-		if _truthy(evaluate(cond, context)):
+		if _truthy(interpreter.evaluate(cond, context)):
 			return success
 		return fail
 

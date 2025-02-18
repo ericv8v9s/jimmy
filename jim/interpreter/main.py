@@ -1,8 +1,13 @@
+from .evaluator import evaluate
+from .builtin import builtin_symbols
+from jim import reader
+from jim.evaluator.evaluator import init_context
+from jim.evaluator.errors import JimmyError, format_error
+import sys
+
+
 def main(argv):
-	import sys
-	from jim import reader, main
-	from .evaluator import evaluate
-	from jim.evaluator.errors import JimmyError, format_error
+	context = init_context(builtin_symbols)
 
 	match argv:
 		case []:  # interactive mode
@@ -18,7 +23,7 @@ def main(argv):
 					break
 
 				try:
-					result = evaluate(form)
+					result = evaluate(form, context)
 					if result is not None:
 						print("->", repr(result), flush=True)
 				except JimmyError as e:
@@ -33,11 +38,12 @@ def main(argv):
 				try:
 					for form in reader.load_forms(lambda: f.read(1)):
 						#print("REPROD:", str(form).rstrip())
-						evaluate(form)
+						evaluate(form, context)
 				except reader.ParseError as e:
 					print(str(e), file=sys.stderr)
 				except JimmyError as e:
 					print(format_error(e), file=sys.stderr)
 
 		case _:
-			main.print_usage()
+			import jim.main
+			jim.main.print_usage()
