@@ -1,26 +1,22 @@
 (def divide (fn (x y)
-	[pre (number? x)]
-	[pre (number? y)]
-	[pre (> x 0)]
-	[pre (> y 0)]
-	[post (= x (+ r (* y q)))]
-	[post (< r y)]
+	(pre (number? x))
+	(pre (number? y))
+	(pre (> x 0))
+	(pre (> y 0))
+	(post (= x (+ r (* y q))))
+	(post (< r y))
 
 	(def r x)
 	(def q 0)
 
 	; +id is the additive identity axiom.
-	;   [axiom (v) [pre (number? v)] (= v (+ v 0))]
-	[+id r]
-	; 1. add0 r-maps to the axiom.
-	; x. Apply axiom on r-map of r, yields (if (number? r) (= r (+ r 0))).
+	; (def +id (axiom (pre (number? v)) (= v (+ v 0))))
+	(+id r)
+	; 1. +id r-maps to the axiom.
 	; 2. Apply axiom on r-map of r, yields (= r (+ r 0)).
 	; 3. The r-form of the whole if is v-mapped True since add0 is axiom.
-	; x. Apply mp: we have (number? x) rv-mapped True,
-	;   so the if reduces to (= r (+ r 0)).
-	; x. mp v-maps the reduced (= r (+ r 0)) to the v-map of the original if.
-	; 6. (= r (+ r 0)) v-mapped True.
-	; 7. Whenever an equality form is v-mapped True, as in this case,
+	; 4. (= r (+ r 0)) v-mapped True.
+	; 5. Whenever an equality form is v-mapped True, as in this case,
 	;   the equal values are merged together.
 
 	[obtain (= r (+ r 0))]
@@ -46,35 +42,36 @@
 	(loop (r q)
 		[invar (= x (+ r (* y q)))]
 		[post (not (<= y r))]
-		(if (<= y r)
-			; Proof obligation: (= x (+ (- r y) (* y (+ q 1))))
-			[+id r]
-			[subt0 y]
-			[obtain (= x (+ (+ r (- y y)) (* y q)))]
-			[sum-neg (- y y)]
-			[obtain (= x (+ (+ r (+ y (- y))) (* y q)))]
-			[+flatten (+ r (+ y (- y)))]
-			[+flatten (+ (+ r y (- y)) (* y q))]
-			[obtain (= x (+ r y (- y) (* y q)))]
-			[+comm (+ r y (- y) (* y q)) 2 3]
-			[+flatten (+ (+ r (- y)) y (* y q))]
-			[obtain (= x (+ (+ r (- y)) y (* y q)))]
-			[sum-neg (- r y)]
-			[obtain (= x (+ (- r y) y (* y q)))]
-			[*id y]
-			[obtain (= x (+ (- r y) (* y 1) (* y q)))]
-			[+assoc (+ (- r y) (+ (* y 1) (* y q)))]
-			[obtain (= x (+ (- r y) (+ (* y 1) (* y q))))]
-			[*distr (* y (+ 1 q))]
-			[obtain (= x (+ (- r y) (* y (+ 1 q))))]
-			(recur (- r y) (+ q 1)))
-			; The recur refers to the loop,
-			; so it similarly commits new v-maps for r and q.
-			; However, these do not correspond to (- r y) and (+ q 1) since
-			; the recur itself may have gone through more recur.
-		[exmid *last* (and (not (<= y r)) (= x (+ r (* q y))))]
-		; Use the principle of excluded middle to get the post-conditions.
-		[and-elim *last*])
+		((by-cases (and (not (<= y r)) (= x (+ r (* q y)))))
+			; Prove the post-conditions by cases.
+			(if (<= y r)
+				(progn
+					; Proof obligation: (= x (+ (- r y) (* y (+ q 1))))
+					(+id r)
+					(subt0 y)
+					(obtain (= x (+ (+ r (- y y)) (* y q))))
+					(sum-neg (- y y))
+					(obtain (= x (+ (+ r (+ y (- y))) (* y q))))
+					(+flatten (+ r (+ y (- y))))
+					(+flatten (+ (+ r y (- y)) (* y q)))
+					(obtain (= x (+ r y (- y) (* y q))))
+					(+comm (+ r y (- y) (* y q)) 2 3)
+					(+flatten (+ (+ r (- y)) y (* y q)))
+					(obtain (= x (+ (+ r (- y)) y (* y q))))
+					(sum-neg (- r y))
+					(obtain (= x (+ (- r y) y (* y q))))
+					(*id y)
+					(obtain (= x (+ (- r y) (* y 1) (* y q))))
+					(+assoc (+ (- r y) (+ (* y 1) (* y q))))
+					(obtain (= x (+ (- r y) (+ (* y 1) (* y q)))))
+					(*distr (* y (+ 1 q)))
+					(obtain (= x (+ (- r y) (* y (+ 1 q)))))
+					; The recur refers to the loop,
+					; so it similarly commits new v-maps for r and q.
+					; However, these do not correspond to (- r y) and (+ q 1) since
+					; the recur itself may have gone through more recur.
+					(recur (- r y) (+ q 1)))))
+		(and-elim (and (not (<= y r)) (= x (+ r (* q y))))))
 
 	[obtain (not (<= y r))]  ; by the loop post-condition
 	[obtain (= x (+ r (* q y)))]  ; by the loop invariant
