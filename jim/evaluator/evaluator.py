@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 
+from jim.debug import debug
 import jim.evaluator.execution as jexec
 from .errors import *
 from jim.objects import *
@@ -35,7 +36,7 @@ def iter_stack():
 
 @contextmanager
 def push_new_frame(call_form):
-	#print(f"DEBUG: PUSH: {call_form}")
+	#debug(f"PUSH: {call_form}")
 	global top_frame
 	top_frame = Stackframe(top_frame, call_form)
 	try:
@@ -44,7 +45,7 @@ def push_new_frame(call_form):
 		raise
 	finally:
 		top_frame = top_frame.last_frame
-		#print(f"DEBUG: POP: {call_form}")
+		#debug(f"POP: {call_form}")
 
 
 def evaluate(obj, context):
@@ -53,7 +54,7 @@ def evaluate(obj, context):
 	Returns the evaluated value; the context may be mutated as part of evaluation.
 	"""
 
-	#print(f"DEBUG: evaluate: {obj}")
+	#debug(f"evaluate: {obj}")
 
 	import jim.objects  # specifically for the nil match below
 	match obj:
@@ -77,8 +78,8 @@ def evaluate(obj, context):
 
 		case _:
 			for i, frame in enumerate(reversed(list(iter_stack()))):
-				print(f"DEBUG: {i}: {frame.call_form}")
-			print(f"DEBUG: raw object: {obj}")
+				debug(f"{i}: {frame.call_form}")
+			debug(f"raw object: {obj}")
 			assert False  # We should never see raw python object.
 
 
@@ -92,7 +93,7 @@ def invoke(lst, context):
 	if isinstance(execution, jexec.EvaluateIn):
 		args = map(lambda arg: evaluate(arg, context), args)
 
-	#print(f"DEBUG: invoke: {lst}")
+	#debug(f"invoke: {lst}")
 
 	try:
 		matched_params = jexec.fill_parameters(execution.parameter_spec, args)

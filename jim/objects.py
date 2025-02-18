@@ -1,6 +1,5 @@
 from collections import UserList
 from abc import ABC, abstractmethod
-from jim.debug import debug
 
 
 class _ValueMixin:
@@ -128,6 +127,7 @@ def filter_tree(tree, criteria):
 
 
 def tree_equal(u, v, eq=lambda u, v: u == v):
+	#from jim.debug import debug
 	#debug(f"tree_equal: eq({u=!s}, {v=!s})={eq(u,v)}")
 	if eq(u, v):
 		return True
