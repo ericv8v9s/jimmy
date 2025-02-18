@@ -102,6 +102,11 @@ class Execution(Atom):
 		self.parameter_spec = parameter_spec
 		self.value = self
 
+	def __repr__(self):
+		return object.__repr__(self)
+	def __str__(self):
+		return object.__str__(self)
+
 	def evaluate(self, calling_context, **locals):
 		# Technically, we don't need locals, as that can exist as another context
 		# on top of the provided context.
@@ -122,6 +127,9 @@ class List(list, Form):
 		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
 		return repr(self)
+	def __hash__(self):
+		# To allow usage as dict keys.
+		return hash(tuple(self))
 
 
 class MutableList(List):
