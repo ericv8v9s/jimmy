@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
+from collections import ChainMap
 
 from jim.debug import debug
 import jim.evaluator.execution as jexec
@@ -7,19 +8,31 @@ from .errors import *
 from jim.objects import *
 
 
-class AbstractContext(ABC):
-	@abstractmethod
-	def __init__(self, parent, bindings={}):
+class NilContext:
+	"""
+	A dummy dict-like at the end of the context chain
+	to raise UndefinedVariableError on failed name lookup.
+	"""
+	def __init__(self):
 		pass
-	@abstractmethod
 	def __getitem__(self, name):
-		pass
-	@abstractmethod
+		raise UndefinedVariableError(name)
 	def __setitem__(self, key, val):
-		pass
+		# Should never happen.
+		assert False
+	def copy(self):
+		return self
+
+def init_context(builtins):
+	return ChainMap(builtins.copy(), NilContext())
 
 
 class Stackframe:
+	"""
+	Since Python already provides the call stack,
+	this doesn't actually do much other than tracking calls
+	for a better error message.
+	"""
 	def __init__(self, last_frame, call_form):
 		self.last_frame = last_frame
 		self.call_form = call_form
@@ -56,15 +69,13 @@ def evaluate(obj, context):
 
 	#debug(f"evaluate: {obj}")
 
-	import jim.objects  # specifically for the nil match below
 	match obj:
-		# These objects are self-evaluating.
-		case (True | False | jim.objects.nil
-				| Integer() | String() | jexec.Execution()):
-			return obj
-
 		case Symbol(value=name):
 			return context[name]
+
+		# Other atoms are self-evaluating objects.
+		case Atom():
+			return obj
 
 		case List():
 			if len(obj) == 0:
@@ -74,7 +85,12 @@ def evaluate(obj, context):
 			except JimmyError:
 				raise
 			except Exception as e:
-				raise JimmyError(str(e), obj)
+				# Take the first one that isn't empty.
+				raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
+
+		case None:
+			# Special case: None means a no-op.
+			return None
 
 		case _:
 			for i, frame in enumerate(reversed(list(iter_stack()))):
@@ -87,7 +103,7 @@ def invoke(lst, context):
 	execution = evaluate(lst[0], context)
 	args = lst[1:]
 
-	if not isinstance(execution, jexec.Execution):
+	if not isinstance(execution, Execution):
 		raise JimmyError("Invocation target is invalid.", lst)
 
 	if isinstance(execution, jexec.EvaluateIn):

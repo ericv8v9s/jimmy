@@ -2,31 +2,15 @@ import jim.objects as lang
 import jim.evaluator.errors as errors
 
 
-class Execution:
-	def __init__(self, parameter_spec):
-		# (fn (x y (rest)) body...)
-		self.parameter_spec = parameter_spec
-
-	def evaluate(self, calling_context, **locals):
-		# Technically, we don't need locals, as that can exist as another context
-		# on top of the provided context.
-		# However, every execution defines a parameter_spec and the evaluator
-		# already matched up all the arguments before calling evaluate,
-		# so as a convenience it is passed on into here.
-		# For most builtin executions, this is handy.
-		# For jimmy functions, locals is never used, but also not a problem.
-		pass
-
-
 class EvaluateIn: pass
 class EvaluateOut: pass
 
 
-class Function(Execution, EvaluateIn):
+class Function(lang.Execution, EvaluateIn):
 	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 
-class Macro(Execution, EvaluateOut):
+class Macro(lang.Execution, EvaluateOut):
 	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 

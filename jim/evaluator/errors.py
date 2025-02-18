@@ -33,7 +33,7 @@ class ArgumentMismatchError(JimmyError):
 		super().__init__(msg, offending_form)
 
 class IndexError(JimmyError):
-	def __init__(self, msg="Cannot index an empty array."):
+	def __init__(self, msg="Cannot index an empty list."):
 		super().__init__(msg)
 
 class AssertionError(JimmyError):

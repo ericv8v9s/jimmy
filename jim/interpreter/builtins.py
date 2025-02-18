@@ -3,7 +3,7 @@ from jim.evaluator.evaluator import evaluate
 import jim.interpreter.evaluator as interpreter
 import jim.evaluator.errors as errors
 from jim.objects import *
-import jim.objects as objects
+import jim.objects as objects  # is_mutable
 
 from functools import reduce
 import operator as ops
@@ -11,8 +11,8 @@ import operator as ops
 
 # TODO make this immutable (outside this module)
 builtin_symbols = {
-	"True": True,
-	"False": False,
+	"true": true,
+	"false": false,
 	"nil": nil
 }
 
@@ -25,11 +25,18 @@ def builtin_symbol(name):
 
 
 def _truthy(v):
-	return not (v is nil or v is False)
+	return _wrap_bool(not (v is nil or v is false))
 
 
 def _wrap_progn(forms):
+	if len(forms) == 1:
+		return forms[0]
+	# also handles edge case of 0 forms
 	return List([Symbol("progn"), *forms])
+
+
+def _wrap_bool(b):
+	return true if b else false
 
 
 def _unwrap_int(form: Integer) -> int:
@@ -85,7 +92,7 @@ def NumberTest(value):
 
 
 @builtin_symbol("def")
-class Definition(jexec.Execution):
+class Definition(Execution):
 	def __init__(self):
 		super().__init__(["lhs", "rhs"])
 
@@ -102,7 +109,7 @@ class Definition(jexec.Execution):
 
 
 @builtin_symbol("let")
-class Let(jexec.Execution):
+class Let(Execution):
 	def __init__(self):
 		super().__init__(["bindings", ["forms"]])
 
@@ -112,7 +119,7 @@ class Let(jexec.Execution):
 			raise errors.JimmyError("Bindings definition invalid.", bindings)
 
 		bindings_raw = bindings
-		new_context = interpreter.Context(context)
+		new_context = context.new_child()
 
 		for i in range(0, len(bindings_raw), 2):
 			k, v = bindings_raw[i], bindings_raw[i+1]
@@ -124,7 +131,7 @@ class Let(jexec.Execution):
 
 
 @builtin_symbol("fn")
-class Function(jexec.Execution):
+class Function(Execution):
 	class Instance(jexec.Function):
 		def __init__(self, parameter_spec, code, closure):
 			super().__init__(parameter_spec)
@@ -132,11 +139,7 @@ class Function(jexec.Execution):
 			self.closure = closure
 
 		def evaluate(self, calling_context, **locals):
-			context = interpreter.Context(self.closure, locals)
-			last = nil
-			for form in self.code:
-				last = evaluate(form, context)
-			return last
+			return evaluate(self.code, self.closure.new_child(locals))
 
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
@@ -160,9 +163,29 @@ class Function(jexec.Execution):
 							"The parameter specification is invalid.", p)
 
 		closure = context.copy()
-		function = Function.Instance(param_spec_parsed, body, closure)
+		function = Function.Instance(param_spec_parsed, _wrap_progn(body), closure)
 		closure["recur"] = function
 		return function
+
+
+@builtin_symbol("drv")
+class Derivation(Execution):
+	"""
+	A Derivation as interpreted by the interpreter is almost a no-op.
+	A Derivation object can be invoked, ignoring all arguments,
+	and the result of which can again be invoked, behaving as a progn.
+	"""
+	class Instance(Execution):
+		def __init__(self):
+			super().__init__(["ignored"])
+		def evaluate(self, *_, **__):
+			return builtin_symbols["progn"]
+
+	def __init__(self):
+		super().__init__(["param_spec", ["body"]])
+
+	def evaluate(self, *_, **__):
+		return Derivation.Instance()
 
 
 @builtin_symbol("apply")
@@ -179,7 +202,7 @@ class Apply(jexec.Macro):
 
 
 @builtin_symbol("progn")
-class Progn(jexec.Execution):
+class Progn(Execution):
 	def __init__(self):
 		super().__init__([["forms"]])
 
@@ -191,7 +214,7 @@ class Progn(jexec.Execution):
 
 
 @builtin_symbol("loop")
-class Loop(jexec.Execution):
+class Loop(Execution):
 	class Instance(jexec.Function):
 		def __init__(self, names, body):
 			self.names = map(str, names)
@@ -202,12 +225,10 @@ class Loop(jexec.Execution):
 		def evaluate(self, context, **bindings):
 			if not self.alive:
 				raise errors.JimmyError("Cannot invoke loop iteration outside of loop.")
-			body_context = interpreter.Context(context, bindings)
+			body_context = context.new_child(bindings)
 			body_context["recur"] = self
 
-			result = nil
-			for form in self.body:
-				result = evaluate(form, body_context)
+			result = evaluate(self.body, body_context)
 
 			for name in self.names:
 				context[name] = body_context[name]
@@ -216,7 +237,7 @@ class Loop(jexec.Execution):
 	def __init__(self):
 		super().__init__(["names", ["body"]])
 	def evaluate(self, context, names, body):
-		loop = Loop.Instance(names, body)
+		loop = Loop.Instance(names, _wrap_progn(body))
 		result = evaluate(List([loop, *names]), context)
 		loop.alive = False
 		return result
@@ -272,7 +293,7 @@ def _transitive_property(pred, a, b, more):
 		a = b
 		b = t
 		result = pred(a, b)
-	return result
+	return _wrap_bool(result)
 
 
 @builtin_symbol("=")
@@ -313,11 +334,11 @@ def GreaterEqual(a, b, more):
 # Empty conjunction is vacuously true.
 # (and) always holds as an axiom.
 @builtin_symbol("and")
-class Conjunction(jexec.Execution):
+class Conjunction(Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
 	def evaluate(self, context, terms):
-		result = True
+		result = true
 		for t in terms:
 			result = evaluate(t, context)
 			if not _truthy(result):
@@ -330,11 +351,11 @@ class Conjunction(jexec.Execution):
 # an empty (or) has no argument which is true.
 # (not (or)) always holds as an axiom.
 @builtin_symbol("or")
-class Disjunction(jexec.Execution):
+class Disjunction(Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
 	def evaluate(self, context, terms):
-		result = False
+		result = false
 		for t in terms:
 			result = evaluate(t, context)
 			if _truthy(result):
@@ -343,7 +364,7 @@ class Disjunction(jexec.Execution):
 
 
 @builtin_symbol("not")
-@function_execution("p")
+@function_execution("p", conversion=_wrap_bool)
 def Negation(p):
 	return not _truthy(p)
 
@@ -352,7 +373,7 @@ def Negation(p):
 @builtin_symbol("if")
 class Implication(jexec.Macro):
 	def __init__(self):
-		super().__init__(["cond", "success", ["fail", True]])
+		super().__init__(["cond", "success", ["fail", true]])
 	def evaluate(self, context, cond, success, fail):
 		if _truthy(evaluate(cond, context)):
 			return success

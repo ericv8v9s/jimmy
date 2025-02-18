@@ -1,4 +1,3 @@
-from collections import UserList
 from abc import ABC, abstractmethod
 
 
@@ -37,26 +36,57 @@ class Form(LanguageObject):
 	"""Notably, comments are language objects but are not forms."""
 	pass
 
+
 class Atom(_ValueMixin, Form):
 	def __init__(self, value):
 		super().__init__(value=value)
 
-class _Nil(Form):
+
+class _Nil(Atom):
 	"""Special singleton nil object."""
+	def __init__(self):
+		super().__init__(None)
 	def __repr__(self):
 		return "nil"
-	def __hash__(self):
-		return 0
-	def __eq__(self, other):
-		return self is other
+	def __str__(self):
+		return "nil"
 nil = _Nil()
+
+
+class _True(Atom):
+	"""Special singleton true object."""
+	def __init__(self):
+		super().__init__(True)
+	def __repr__(self):
+		return "true"
+	def __str__(self):
+		return "true"
+	def __bool__(self):
+		return True
+true = _True()
+
+
+class _False(Atom):
+	"""Special singleton false object."""
+	def __init__(self):
+		super().__init__(False)
+	def __repr__(self):
+		return "false"
+	def __str__(self):
+		return "false"
+	def __bool__(self):
+		return False
+false = _False()
+
 
 class Integer(Atom):
 	pass
 
+
 class Symbol(Atom):
 	def __repr__(self):
 		return self.value  # Don't want quotes around symbol names.
+
 
 class String(Atom):
 	_str_escape = str.maketrans({
@@ -66,15 +96,33 @@ class String(Atom):
 		return '"' + self.value.translate(self._str_escape) + '"'
 
 
+class Execution(Atom):
+	def __init__(self, parameter_spec):
+		# (fn (x y (rest)) body...)
+		self.parameter_spec = parameter_spec
+		self.value = self
+
+	def evaluate(self, calling_context, **locals):
+		# Technically, we don't need locals, as that can exist as another context
+		# on top of the provided context.
+		# However, every execution defines a parameter_spec and the evaluator
+		# already matched up all the arguments before calling evaluate,
+		# so as a convenience it is passed on into here.
+		# For most builtin executions, this is handy.
+		# For jimmy functions, locals is never used, but also not a problem.
+		pass
+
+
 class List(list, Form):
 	def __init__(self, elements=None):
 		list.__init__(self, [] if elements is None else elements)
-		LanguageObject.__init__(self)
+		Form.__init__(self)
 		self.elements = self  # to make this work with match statements
 	def __repr__(self):
 		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
 		return repr(self)
+
 
 class MutableList(List):
 	def __init__(self, elements=None):
@@ -155,10 +203,10 @@ def is_mutable(form):
 	return any(map(is_mutable, form))
 
 
-__all__ = [x.__name__ for x in [
-	LanguageObject, Form,
-	Atom, Integer, Symbol, String,
-	List, MutableList,
-	Comment
-]]
-__all__.append("nil")
+__all__ = [
+	*(cls.__name__ for cls in [
+		LanguageObject, Form,
+		Atom, Integer, Symbol, String, Execution,
+		List, MutableList,
+		Comment]),
+	"nil", "true", "false"]
