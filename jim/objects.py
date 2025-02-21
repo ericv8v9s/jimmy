@@ -1,6 +1,3 @@
-from abc import ABC, abstractmethod
-
-
 class _ValueMixin:
 	def __init__(self, value, *args, **kws):
 		self.value = value
@@ -22,12 +19,10 @@ class _ValueMixin:
 		return str(self.value)
 
 
-class LanguageObject(ABC):
-	@abstractmethod
+class LanguageObject:
 	def __hash__(self):
 		pass
 
-	@abstractmethod
 	def __eq__(self):
 		pass
 
@@ -79,6 +74,13 @@ class _False(Atom):
 false = _False()
 
 
+def truthy(v):
+	return wrap_bool(not (v is nil or v is false))
+
+def wrap_bool(b):
+	return true if b else false
+
+
 class Integer(Atom):
 	pass
 
@@ -98,14 +100,16 @@ class String(Atom):
 
 class Execution(Atom):
 	def __init__(self, parameter_spec):
-		# (fn (x y (rest)) body...)
-		self.parameter_spec = parameter_spec
-		self.value = self
+		super().__init__(self)
+		self.parameter_spec = tuple(parameter_spec)
 
 	def __repr__(self):
 		return object.__repr__(self)
 	def __str__(self):
 		return object.__str__(self)
+	def __eq__(self, other):
+		# Correct for builtins.
+		return type(self) == type(other)
 
 	def evaluate(self, calling_context, **locals):
 		# Technically, we don't need locals, as that can exist as another context
@@ -114,8 +118,20 @@ class Execution(Atom):
 		# already matched up all the arguments before calling evaluate,
 		# so as a convenience it is passed on into here.
 		# For most builtin executions, this is handy.
-		# For jimmy functions, locals is never used, but also not a problem.
-		pass
+		assert False
+
+
+class UnknownValue(Atom):
+	_next_id = 0
+	def __init__(self):
+		super().__init__(self)
+		# Is this thread-safe? No. Do we care? Also no.
+		self.id = UnknownValue._next_id
+		UnknownValue._next_id += 1
+	def __repr__(self):
+		return f"unk{self.id}"
+	def __str__(self):
+		return repr(self)
 
 
 class List(list, Form):
@@ -126,15 +142,15 @@ class List(list, Form):
 	def __repr__(self):
 		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
-		return repr(self)
+		return '(' + " ".join(map(str, self)) + ')'
 	def __hash__(self):
 		# To allow usage as dict keys.
 		return hash(tuple(self))
 
 
-class MutableList(List):
-	def __init__(self, elements=None):
-		super().__init__(elements)
+#class MutableList(List):
+#	def __init__(self, elements=None):
+#		super().__init__(elements)
 
 
 class Comment(_ValueMixin, LanguageObject):
@@ -204,8 +220,8 @@ def tree_equal(u, v, eq=lambda u, v: u == v):
 
 def is_mutable(form):
 	"""A form is considered mutable if any part of it could be mutated."""
-	if isinstance(form, MutableList):
-		return True
+#	if isinstance(form, MutableList):
+#		return True
 	if is_leaf(form):
 		return False
 	return any(map(is_mutable, form))
@@ -214,7 +230,7 @@ def is_mutable(form):
 __all__ = [
 	*(cls.__name__ for cls in [
 		LanguageObject, Form,
-		Atom, Integer, Symbol, String, Execution,
-		List, MutableList,
+		Atom, Integer, Symbol, String, Execution, UnknownValue,
+		List, #MutableList,
 		Comment]),
 	"nil", "true", "false"]

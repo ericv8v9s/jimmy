@@ -1,11 +1,16 @@
-from contextlib import contextmanager
 from collections import ChainMap
 
-from jim.debug import debug
-import jim.evaluator.execution as jexec
 from .errors import *
+import jim.evaluator.execution as jexec
 from jim.objects import *
+from jim.debug import debug
 
+
+class DeepCopyChainMap(ChainMap):
+	def __init__(self, *maps):
+		super().__init__(*maps)
+	def copy(self):
+		return DeepCopyChainMap(*(m.copy() for m in self.maps))
 
 class NilContext:
 	"""
@@ -23,68 +28,112 @@ class NilContext:
 		return self
 
 def init_context(builtins):
-	return ChainMap(builtins.copy(), NilContext())
+	return DeepCopyChainMap(builtins.copy(), NilContext())
 
+
+stack = []
 
 class Stackframe:
-	"""
-	Since Python already provides the call stack,
-	this doesn't actually do much other than tracking calls
-	for a better error message.
-	"""
-	def __init__(self, last_frame, call_form):
-		self.last_frame = last_frame
-		self.call_form = call_form
+	def __init__(self, form, context):
+		self.form = form
+		self.context = context
+		self.evaluation = self.evaluate()
+		self.result = None
 
-top_frame = None
+	def __repr__(self):
+		return f"<{self.form}, {self.result}>"
+
+	def evaluate(self):
+		result = resolve(self.form, self.context)
+		if result is not push:
+			self.result = result
+			return
+
+		target, *args = self.form
+
+		# Poor man's Future with generators.
+		f = push(target, self.context)
+		yield
+		target = f.result
+
+		if not isinstance(target, Execution):
+			raise JimmyError("Invocation target is invalid.", self.form)
+
+		if isinstance(target, jexec.EvaluateIn):
+			for i, arg in enumerate(args):
+				f = push(arg, self.context)
+				yield
+				args[i] = f.result
+
+		try:
+			matched_args = jexec.fill_parameters(target.parameter_spec, args)
+		except jexec.ArgumentMismatchError:
+			raise ArgumentMismatchError(self.form) from None
+
+		target_eval = target.evaluate(self.context, **matched_args)
+		try:
+			while True:
+				yield next(target_eval)
+		except StopIteration as e:
+			self.result = e.value
+
+		if isinstance(target, jexec.EvaluateOut):
+			f = push(self.result, self.context)
+			yield
+			self.result = f.result
 
 
-def iter_stack():
-	f = top_frame
-	while f is not None:
-		yield f
-		f = f.last_frame
+def push(form, context):
+	frame = Stackframe(form, context)
+	stack.append(frame)
+	return frame
+
+def pop():
+	return stack.pop().result
 
 
-@contextmanager
-def push_new_frame(call_form):
-	#debug(f"PUSH: {call_form}")
-	global top_frame
-	top_frame = Stackframe(top_frame, call_form)
-	try:
-		yield top_frame
-	except:
-		raise
-	finally:
-		top_frame = top_frame.last_frame
-		#debug(f"POP: {call_form}")
+def top_level_evaluate(obj, context):
+	zero = len(stack)
+	# Because we can also call this with a non-empty initial stack
+	# in the middle of evaluating an execution.
+	push(obj, context)
+
+	while True:
+		try:
+			next(stack[-1].evaluation)
+		except JimmyError:
+			raise
+		except StopIteration:
+			ret = pop()
+			if len(stack) == zero:
+				return ret
+		except Exception as e:
+			# Take the first one that isn't empty.
+			raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
 
 
-def invoke(lst, evaluate, context):
-	"""
-	Invokes the List form lst using the provided evaluation function
-	in the given context.
-	"""
-	execution = evaluate(lst[0], context)
-	args = lst[1:]
+def resolve(obj, context):
+	match obj:
+		case Symbol(value=name):
+			return context[name]
 
-	if not isinstance(execution, Execution):
-		raise JimmyError("Invocation target is invalid.", lst)
+		# Other atoms are self-evaluating objects.
+		case Atom():
+			return obj
 
-	if isinstance(execution, jexec.EvaluateIn):
-		args = map(lambda arg: evaluate(arg, context), args)
+		case List():
+			if len(obj) == 0:
+				return nil
 
-	#debug(f"invoke: {lst}")
+			# Instructs the caller to push and retrieve the result later.
+			return push
 
-	try:
-		matched_params = jexec.fill_parameters(execution.parameter_spec, args)
-	except jexec.ArgumentMismatchError:
-		raise ArgumentMismatchError(lst) from None
+		case None:
+			# Special case: None means a no-op.
+			return None
 
-	with push_new_frame(lst):
-		result = execution.evaluate(context, **matched_params)
-
-	if isinstance(execution, jexec.EvaluateOut):
-		return evaluate(result, context)
-	else:
-		return result
+		case _:
+			for i, frame in enumerate(stack):
+				debug(f"{i}: {frame.form}")
+			debug(f"raw object: {obj}")
+			assert False  # We should never see raw python object.

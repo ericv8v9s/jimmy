@@ -1,16 +1,22 @@
-import jim.objects as lang
+import jim.objects as objects
 import jim.evaluator.errors as errors
+import jim.evaluator.evaluator as evaluator
 
 
-class EvaluateIn: pass
-class EvaluateOut: pass
+class EvaluateIn:
+	def __init__(self, *args, **kws):
+		super().__init__(*args, **kws)
+
+class EvaluateOut:
+	def __init__(self, *args, **kws):
+		super().__init__(*args, **kws)
 
 
-class Function(lang.Execution, EvaluateIn):
+class Function(EvaluateIn, objects.Execution):
 	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 
-class Macro(lang.Execution, EvaluateOut):
+class Macro(EvaluateOut, objects.Execution):
 	def __init__(self, parameter_spec):
 		super().__init__(parameter_spec)
 
@@ -22,7 +28,7 @@ class ArgumentMismatchError(Exception):
 	"""
 	pass
 
-def fill_parameters(parameter_spec, arguments) -> dict[str, lang.Form]:
+def fill_parameters(parameter_spec, arguments) -> dict[str, objects.Form]:
 	params = dict()  # collects arguments to match up with parameters
 	arg_idx = 0
 
@@ -42,7 +48,7 @@ def fill_parameters(parameter_spec, arguments) -> dict[str, lang.Form]:
 		elif isinstance(p, list):  # optional or rest
 			match len(p):
 				case 1:  # rest
-					params[p[0]] = lang.List(arguments[arg_idx:])
+					params[p[0]] = objects.List(arguments[arg_idx:])
 					arg_idx += len(params[p[0]])
 				case 2:  # optional
 					if arg_idx < len(arguments):

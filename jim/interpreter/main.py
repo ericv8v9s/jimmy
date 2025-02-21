@@ -17,7 +17,7 @@ def main(argv):
 				try:
 					form = next(forms)
 				except reader.ParseError as e:
-					print(str(e), file=sys.stderr)
+					print(repr(e), file=sys.stderr)
 					break
 				except StopIteration:
 					break
@@ -40,9 +40,10 @@ def main(argv):
 						#print("REPROD:", str(form).rstrip())
 						evaluate(form, context)
 				except reader.ParseError as e:
-					print(str(e), file=sys.stderr)
+					sys.exit(e)
 				except JimmyError as e:
 					print(format_error(e), file=sys.stderr)
+					sys.exit(2)
 
 		case _:
 			import jim.main
