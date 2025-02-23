@@ -2,7 +2,7 @@ from jim.objects import *
 import jim.objects as objects  # is_mutable, truthy, wrap_bool
 from jim.evaluator.execution import Function, Macro
 import jim.evaluator.errors as errors
-from jim.evaluator.evaluator import push, top_level_evaluate
+from jim.evaluator.evaluator import push, evaluate
 
 from functools import reduce
 import operator as ops
@@ -16,7 +16,7 @@ builtin_symbols = {
 
 def builtin_symbol(name):
 	def reg_symbol(cls):
-		cls.__str__ = lambda self: name
+		cls.__repr__ = lambda self: name
 		builtin_symbols[name] = cls()
 		return cls
 	return reg_symbol
@@ -158,7 +158,7 @@ class UserExecution(Execution):
 				case List(elements=[Symbol(value=name)]):  # rest
 					param_spec.append([name])
 				case List(elements=[Symbol(value=name), Form() as default]):  # optional
-					default = top_level_evaluate(default, context)
+					default = evaluate(default, context)
 					if objects.is_mutable(default):
 						raise JimmyError("Default argument cannot be or contain a mutable object.")
 					else:
@@ -168,8 +168,14 @@ class UserExecution(Execution):
 							"The parameter specification is invalid.", p)
 		return param_spec
 
-	def evaluate(self, context, param_spec, body):
-		assert False
+	def evaluate(self, calling_context, param_spec, body):
+		execution = self.Instance(
+				UserExecution.prepare_param_spec(param_spec, calling_context),
+				common.wrap_progn(body),
+				closure=calling_context.copy())
+		execution.closure["*recur*"] = execution
+		return execution
+		yield
 
 
 @builtin_symbol("progn")
@@ -194,26 +200,45 @@ class PreCondition(Macro):
 	def evaluate(self, context, condition, forms):
 		f = push(condition, context)
 		yield
-		condition = f.result
-		if not objects.truthy(condition):
-			raise errors.AssertionError(p, msg="Pre-condition failed.")
+		if not objects.truthy(f.result):
+			raise errors.AssertionError(condition, msg="Pre-condition failed.")
 		return wrap_progn(forms)
+
 
 @builtin_symbol("postcond")
 class PreCondition(Execution):
 	def __init__(self):
 		super().__init__(["condition", ["forms"]])
+
 	def evaluate(self, context, condition, forms):
+		# The post-condition is evaluated under the original context
+		# (thus considering the original parameter bindings in a function)
+		# and with the special name *result* providing the result value.
+		# This is to prove recursion: if the post-condition is dependent
+		# on the function internal names, a *recur* call cannot be skipped.
+		start_context = context.copy()
+
 		f = push(wrap_progn(forms), context)
 		yield
 		result = f.result
+		start_context["*result*"] = result
 
-		f = push(condition, context)
+		f = push(condition, start_context)
 		yield
-		condition = f.result
-		if not objects.truthy(condition):
-			raise errors.AssertionError(p, msg="Post-condition failed.")
+		if not objects.truthy(f.result):
+			raise errors.AssertionError(condition, msg="Post-condition failed.")
 		return result
+
+
+@builtin_symbol("invar")
+class Invariant(Macro):
+	def __init__(self):
+		super().__init__(["condition", ["forms"]])
+	def evaluate(self, context, condition, forms):
+		return List([
+			builtin_symbols["precond"], condition, List([
+				builtin_symbols["postcond"], condition, *forms])])
+		yield
 
 
 @builtin_symbol("apply")
@@ -287,7 +312,7 @@ def _transitive_property(pred, a, b, more):
 @function_execution("a", "b", ["more"])
 def Equality(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.eq, a, b, more)
+	return _transitive_property(Form.equal, a, b, more)
 
 
 @builtin_symbol("<")
@@ -442,9 +467,9 @@ def Associate(lst, idx, val):
 #	return lst
 
 
-@builtin_symbol("count")
+@builtin_symbol("len")
 @function_execution("lst")
-def Count(lst):
+def Length(lst):
 	return Integer(len(lst))
 
 

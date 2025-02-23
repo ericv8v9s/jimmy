@@ -1,6 +1,5 @@
 import jim.objects as objects
 import jim.evaluator.errors as errors
-import jim.evaluator.evaluator as evaluator
 
 
 class EvaluateIn:

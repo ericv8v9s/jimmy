@@ -27,7 +27,10 @@ class NilContext:
 	def copy(self):
 		return self
 
-def init_context(builtins):
+def init_context(builtins=None):
+	if builtins is None:
+		from jim.evaluator.common_builtin import builtin_symbols
+		builtins = builtin_symbols
 	return DeepCopyChainMap(builtins.copy(), NilContext())
 
 
@@ -36,51 +39,60 @@ stack = []
 class Stackframe:
 	def __init__(self, form, context):
 		self.form = form
+		self.invocation_form = form
 		self.context = context
-		self.evaluation = self.evaluate()
+		self.invocation = evaluate_frame(self)
 		self.result = None
 
 	def __repr__(self):
 		return f"<{self.form}, {self.result}>"
 
-	def evaluate(self):
-		result = resolve(self.form, self.context)
-		if result is not push:
-			self.result = result
-			return
 
-		target, *args = self.form
+def evaluate_frame(stackframe):
+	"""
+	Returns a generator which evaluates the form on the given stackframe,
+	yielding whenever another stackframe is pushed on top.
+	The result of the call is stored in the result field of the given frame.
+	"""
+	result = evaluate_simple_form(stackframe.form, stackframe.context)
+	if result is not push:
+		stackframe.result = result
+		return
 
-		# Poor man's Future with generators.
-		f = push(target, self.context)
-		yield
-		target = f.result
+	target, *args = stackframe.form
 
-		if not isinstance(target, Execution):
-			raise JimmyError("Invocation target is invalid.", self.form)
+	# Poor man's Future with generators.
+	f = push(target, stackframe.context)
+	yield
+	target = f.result
 
-		if isinstance(target, jexec.EvaluateIn):
-			for i, arg in enumerate(args):
-				f = push(arg, self.context)
-				yield
-				args[i] = f.result
+	if not isinstance(target, Execution):
+		raise JimmyError("Invocation target is invalid.", stackframe.form)
 
-		try:
-			matched_args = jexec.fill_parameters(target.parameter_spec, args)
-		except jexec.ArgumentMismatchError:
-			raise ArgumentMismatchError(self.form) from None
-
-		target_eval = target.evaluate(self.context, **matched_args)
-		try:
-			while True:
-				yield next(target_eval)
-		except StopIteration as e:
-			self.result = e.value
-
-		if isinstance(target, jexec.EvaluateOut):
-			f = push(self.result, self.context)
+	if isinstance(target, jexec.EvaluateIn):
+		for i, arg in enumerate(args):
+			f = push(arg, stackframe.context)
 			yield
-			self.result = f.result
+			args[i] = f.result
+
+	stackframe.invocation_form = List([target, *args])
+
+	try:
+		matched_args = jexec.fill_parameters(target.parameter_spec, args)
+	except jexec.ArgumentMismatchError:
+		raise ArgumentMismatchError(stackframe.form) from None
+
+	target_eval = target.evaluate(stackframe.context, **matched_args)
+	try:
+		while True:
+			yield next(target_eval)
+	except StopIteration as e:
+		stackframe.result = e.value
+
+	if isinstance(target, jexec.EvaluateOut):
+		f = push(stackframe.result, stackframe.context)
+		yield
+		stackframe.result = f.result
 
 
 def push(form, context):
@@ -92,7 +104,7 @@ def pop():
 	return stack.pop().result
 
 
-def top_level_evaluate(obj, context):
+def evaluate(obj, context):
 	zero = len(stack)
 	# Because we can also call this with a non-empty initial stack
 	# in the middle of evaluating an execution.
@@ -100,8 +112,9 @@ def top_level_evaluate(obj, context):
 
 	while True:
 		try:
-			next(stack[-1].evaluation)
+			next(stack[-1].invocation)
 		except JimmyError:
+			pop()
 			raise
 		except StopIteration:
 			ret = pop()
@@ -112,7 +125,7 @@ def top_level_evaluate(obj, context):
 			raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
 
 
-def resolve(obj, context):
+def evaluate_simple_form(obj, context):
 	match obj:
 		case Symbol(value=name):
 			return context[name]

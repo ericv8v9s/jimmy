@@ -29,7 +29,10 @@ class LanguageObject:
 
 class Form(LanguageObject):
 	"""Notably, comments are language objects but are not forms."""
-	pass
+	def equal(self, other):
+		# The concept of equality within the language,
+		# which may be changed in the future.
+		return self == other
 
 
 class Atom(_ValueMixin, Form):

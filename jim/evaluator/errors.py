@@ -7,7 +7,7 @@ class JimmyError(Exception):
 		self.stackframes = list(evaluator.stack)
 		self.msg = msg
 		if offending_form is None:
-			offending_form = self.stackframes[-1].form
+			offending_form = self.stackframes[-1].invocation_form
 		self.offending_form = offending_form
 
 class UndefinedVariableError(JimmyError):
@@ -41,9 +41,7 @@ def format_error(e):
 		result += f"  {i}: {f.form!r}\n"
 
 	result += (
-			"The evaluation of\n"
-			f"  {e.offending_form!r}\n"
-			"failed because\n"
-			f"  {e.msg}")
+			f"Offending form: {e.offending_form!r}\n"
+			f"Cause: {e.msg}")
 
 	return result
