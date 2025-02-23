@@ -9,10 +9,7 @@ from jim.objects import *
 
 _SPACES = set(whitespace)
 _DIGITS = set(digits)
-_LETTERS = set(ascii_letters)
-_PUNCTS = set(r'!#$%&*+-/:<=>?@\^_~')
 _SEPARATORS = set("()[]") | _SPACES | {""}
-_IDENT_CHARS = _LETTERS | _PUNCTS | _DIGITS
 
 
 # The parser is unfortunately stateful...
@@ -226,7 +223,7 @@ def parse_string(chars):
 def parse_symbol(chars):
 	s = []
 	for c in chars:
-		if c not in _IDENT_CHARS:
+		if c in _SEPARATORS:
 			break
 		s.append(c)
 	if len(s) > 0:
