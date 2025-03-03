@@ -1,8 +1,3 @@
-from collections import UserList
-from abc import ABC, abstractmethod
-from jim.debug import debug
-
-
 class _ValueMixin:
 	def __init__(self, value, *args, **kws):
 		self.value = value
@@ -24,40 +19,79 @@ class _ValueMixin:
 		return str(self.value)
 
 
-class LanguageObject(ABC):
-	@abstractmethod
+class LanguageObject:
 	def __hash__(self):
 		pass
 
-	@abstractmethod
 	def __eq__(self):
 		pass
 
 
 class Form(LanguageObject):
 	"""Notably, comments are language objects but are not forms."""
-	pass
+	def equal(self, other):
+		# The concept of equality within the language,
+		# which may be changed in the future.
+		return self == other
+
 
 class Atom(_ValueMixin, Form):
 	def __init__(self, value):
 		super().__init__(value=value)
 
-class _Nil(Form):
+
+class _Nil(Atom):
 	"""Special singleton nil object."""
+	def __init__(self):
+		super().__init__(None)
 	def __repr__(self):
 		return "nil"
-	def __hash__(self):
-		return 0
-	def __eq__(self, other):
-		return self is other
+	def __str__(self):
+		return "nil"
 nil = _Nil()
+
+
+class _True(Atom):
+	"""Special singleton true object."""
+	def __init__(self):
+		super().__init__(True)
+	def __repr__(self):
+		return "true"
+	def __str__(self):
+		return "true"
+	def __bool__(self):
+		return True
+true = _True()
+
+
+class _False(Atom):
+	"""Special singleton false object."""
+	def __init__(self):
+		super().__init__(False)
+	def __repr__(self):
+		return "false"
+	def __str__(self):
+		return "false"
+	def __bool__(self):
+		return False
+false = _False()
+
+
+def truthy(v):
+	return wrap_bool(not (v is nil or v is false))
+
+def wrap_bool(b):
+	return true if b else false
+
 
 class Integer(Atom):
 	pass
 
+
 class Symbol(Atom):
 	def __repr__(self):
 		return self.value  # Don't want quotes around symbol names.
+
 
 class String(Atom):
 	_str_escape = str.maketrans({
@@ -67,19 +101,59 @@ class String(Atom):
 		return '"' + self.value.translate(self._str_escape) + '"'
 
 
+class Execution(Atom):
+	def __init__(self, parameter_spec):
+		super().__init__(self)
+		self.parameter_spec = tuple(parameter_spec)
+
+	def __repr__(self):
+		return object.__repr__(self)
+	def __str__(self):
+		return object.__str__(self)
+	def __eq__(self, other):
+		# Correct for builtins.
+		return type(self) == type(other)
+
+	def evaluate(self, calling_context, **locals):
+		# Technically, we don't need locals, as that can exist as another context
+		# on top of the provided context.
+		# However, every execution defines a parameter_spec and the evaluator
+		# already matched up all the arguments before calling evaluate,
+		# so as a convenience it is passed on into here.
+		# For most builtin executions, this is handy.
+		assert False
+
+
+class UnknownValue(Atom):
+	_next_id = 0
+	def __init__(self):
+		super().__init__(self)
+		# Is this thread-safe? No. Do we care? Also no.
+		self.id = UnknownValue._next_id
+		UnknownValue._next_id += 1
+	def __repr__(self):
+		return f"unk{self.id}"
+	def __str__(self):
+		return repr(self)
+
+
 class List(list, Form):
 	def __init__(self, elements=None):
 		list.__init__(self, [] if elements is None else elements)
-		LanguageObject.__init__(self)
+		Form.__init__(self)
 		self.elements = self  # to make this work with match statements
 	def __repr__(self):
 		return '(' + " ".join(map(repr, self)) + ')'
 	def __str__(self):
-		return repr(self)
+		return '(' + " ".join(map(str, self)) + ')'
+	def __hash__(self):
+		# To allow usage as dict keys.
+		return hash(tuple(self))
 
-class MutableList(List):
-	def __init__(self, elements=None):
-		super().__init__(elements)
+
+#class MutableList(List):
+#	def __init__(self, elements=None):
+#		super().__init__(elements)
 
 
 class Comment(_ValueMixin, LanguageObject):
@@ -128,6 +202,7 @@ def filter_tree(tree, criteria):
 
 
 def tree_equal(u, v, eq=lambda u, v: u == v):
+	#from jim.debug import debug
 	#debug(f"tree_equal: eq({u=!s}, {v=!s})={eq(u,v)}")
 	if eq(u, v):
 		return True
@@ -148,17 +223,17 @@ def tree_equal(u, v, eq=lambda u, v: u == v):
 
 def is_mutable(form):
 	"""A form is considered mutable if any part of it could be mutated."""
-	if isinstance(form, MutableList):
-		return True
+#	if isinstance(form, MutableList):
+#		return True
 	if is_leaf(form):
 		return False
 	return any(map(is_mutable, form))
 
 
-__all__ = [x.__name__ for x in [
-	LanguageObject, Form,
-	Atom, Integer, Symbol, String,
-	List, MutableList,
-	Comment
-]]
-__all__.append("nil")
+__all__ = [
+	*(cls.__name__ for cls in [
+		LanguageObject, Form,
+		Atom, Integer, Symbol, String, Execution, UnknownValue,
+		List, #MutableList,
+		Comment]),
+	"nil", "true", "false"]

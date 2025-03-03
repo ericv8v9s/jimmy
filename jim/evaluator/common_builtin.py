@@ -1,38 +1,32 @@
-import jim.evaluator.execution as jexec
-from jim.evaluator.evaluator import evaluate
-import jim.interpreter.evaluator as interpreter
-import jim.evaluator.errors as errors
 from jim.objects import *
-import jim.objects as objects
+import jim.objects as objects  # is_mutable, truthy, wrap_bool
+from jim.evaluator.execution import Function, Macro
+import jim.evaluator.errors as errors
+from jim.evaluator.evaluator import push, evaluate
 
 from functools import reduce
 import operator as ops
 
 
-# TODO make this immutable (outside this module)
 builtin_symbols = {
-	"True": True,
-	"False": False,
+	"true": true,
+	"false": false,
 	"nil": nil
 }
 
 def builtin_symbol(name):
 	def reg_symbol(cls):
-		cls.__str__ = lambda self: name
+		cls.__repr__ = lambda self: name
 		builtin_symbols[name] = cls()
 		return cls
 	return reg_symbol
 
 
-def _truthy(v):
-	return not (v is nil or v is False)
-
-
-def _wrap_progn(forms):
+def wrap_progn(forms):
 	if len(forms) == 1:
 		return forms[0]
 	# also handles edge case of 0 forms
-	return List([Symbol("progn"), *forms])
+	return List([builtin_symbols["progn"], *forms])
 
 
 def _unwrap_int(form: Integer) -> int:
@@ -41,14 +35,14 @@ def _unwrap_int(form: Integer) -> int:
 	return form.value
 
 
-def product(values):  # just like the builtin sum
+def _product(values):  # just like the builtin sum
 	return reduce(ops.mul, values, 1)
 
 
-def flatten(coll):
+def _flatten(coll):
 	def combine(result, next):
 		if isinstance(next, list):
-			result.extend(flatten(next))
+			result.extend(_flatten(next))
 		else:
 			result.append(next)
 		return result
@@ -62,13 +56,14 @@ def function_execution(*param_spec, conversion=lambda x: x):
 	as the evaluate implementation.
 	A conversion function can be specified to be applied to the return value.
 	"""
-	def decorator(eval_impl):
+	def decorator(fn):
 		def __init__(self):
 			super(type(self), self).__init__(param_spec)
 		def evaluate(self, calling_context, **locals):
-			return conversion(eval_impl(**locals))
+			return conversion(fn(**locals))
+			yield
 		# Creates a class of the same name, with Function as parent.
-		return type(evaluate.__name__, (jexec.Function,),
+		return type(fn.__name__, (Function,),
 				{ '__init__': __init__, 'evaluate': evaluate })
 	return decorator
 
@@ -76,7 +71,7 @@ def function_execution(*param_spec, conversion=lambda x: x):
 @builtin_symbol("assert")
 @function_execution("expr")
 def Assertion(expr):
-	if not _truthy(expr):
+	if not objects.truthy(expr):
 		raise errors.AssertionError(expr)
 	return nil
 
@@ -88,9 +83,9 @@ def NumberTest(value):
 
 
 @builtin_symbol("def")
-class Definition(jexec.Execution):
+class Definition(Execution):
 	def __init__(self):
-		super().__init__(["lhs", "rhs"])
+		super().__init__(["lhs", ["rhs", UnknownValue]])
 
 	def evaluate(self, context, lhs, rhs):
 		match lhs:
@@ -99,13 +94,18 @@ class Definition(jexec.Execution):
 			case _:
 				raise errors.JimmyError("Definition target is not an identifier.", lhs)
 
-		rhs = evaluate(rhs, context)
+		if rhs is UnknownValue:
+			rhs = UnknownValue()
+		else:
+			f = push(rhs, context)
+			yield
+			rhs = f.result
 		context[lhs] = rhs
 		return rhs
 
 
 @builtin_symbol("let")
-class Let(jexec.Execution):
+class Let(Execution):
 	def __init__(self):
 		super().__init__(["bindings", ["forms"]])
 
@@ -115,109 +115,144 @@ class Let(jexec.Execution):
 			raise errors.JimmyError("Bindings definition invalid.", bindings)
 
 		bindings_raw = bindings
-		new_context = interpreter.Context(context)
+		new_context = context.new_child()
 
 		for i in range(0, len(bindings_raw), 2):
 			k, v = bindings_raw[i], bindings_raw[i+1]
 			if not isinstance(k, Symbol):
 				raise errors.JimmyError("Definition target is not an identifier.", k)
-			new_context[k.value] = evaluate(v, new_context)
+			f = push(v, new_context)
+			yield
+			new_context[k.value] = f.result
 
-		return evaluate(_wrap_progn(forms), new_context)
+		f = push(wrap_progn(forms), new_context)
+		yield
+		return f.result
 
 
-@builtin_symbol("fn")
-class Function(jexec.Execution):
-	class Instance(jexec.Function):
-		def __init__(self, parameter_spec, code, closure):
-			super().__init__(parameter_spec)
-			self.code = code
+class UserExecution(Execution):
+	class Instance(Execution):
+		def __init__(self, parameter_spec, body, closure):
+			Execution.__init__(self, parameter_spec)
+			self.body = body
 			self.closure = closure
 
 		def evaluate(self, calling_context, **locals):
-			context = interpreter.Context(self.closure, locals)
-			return evaluate(self.code, context)
+			f = push(self.body, self.closure.new_child(locals))
+			yield
+			return f.result
+
+		def __eq__(self, other):
+			return False
 
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
 
-	def evaluate(self, context, param_spec, body):
-		param_spec_parsed = []
-		for p in param_spec:
+	@staticmethod
+	def prepare_param_spec(raw_spec_list, context):
+		param_spec = []
+		for p in raw_spec_list:
 			match p:
 				case Symbol(value=name):  # positional
-					param_spec_parsed.append(name)
+					param_spec.append(name)
 				case List(elements=[Symbol(value=name)]):  # rest
-					param_spec_parsed.append([name])
+					param_spec.append([name])
 				case List(elements=[Symbol(value=name), Form() as default]):  # optional
 					default = evaluate(default, context)
 					if objects.is_mutable(default):
 						raise JimmyError("Default argument cannot be or contain a mutable object.")
 					else:
-						param_spec_parsed.append([name, default])
+						param_spec.append([name, default])
 				case _:
 					raise errors.JimmyError(
 							"The parameter specification is invalid.", p)
+		return param_spec
 
-		closure = context.copy()
-		function = Function.Instance(param_spec_parsed, _wrap_progn(body), closure)
-		closure["recur"] = function
-		return function
-
-
-@builtin_symbol("apply")
-class Apply(jexec.Macro):
-	def __init__(self):
-		super().__init__(["f", "args"])
-
-	def evaluate(self, context, f, args):
-		args_cooked = evaluate(args, context)
-		try:
-			return List([f, *args_cooked])
-		except TypeError:
-			return List([f, args_cooked])
+	def evaluate(self, calling_context, param_spec, body):
+		execution = self.Instance(
+				UserExecution.prepare_param_spec(param_spec, calling_context),
+				common.wrap_progn(body),
+				closure=calling_context.copy())
+		execution.closure["*recur*"] = execution
+		return execution
+		yield
 
 
 @builtin_symbol("progn")
-class Progn(jexec.Execution):
+class Progn(Execution):
 	def __init__(self):
 		super().__init__([["forms"]])
 
 	def evaluate(self, context, forms):
 		result = nil
 		for form in forms:
-			result = evaluate(form, context)
+			f = push(form, context)
+			yield
+			result = f.result
 		return result
 
 
-@builtin_symbol("loop")
-class Loop(jexec.Execution):
-	class Instance(jexec.Function):
-		def __init__(self, names, body):
-			self.names = map(str, names)
-			super().__init__(self.names)
-			self.body = body
-			self.alive = True
-
-		def evaluate(self, context, **bindings):
-			if not self.alive:
-				raise errors.JimmyError("Cannot invoke loop iteration outside of loop.")
-			body_context = interpreter.Context(context, bindings)
-			body_context["recur"] = self
-
-			result = evaluate(self.body, body_context)
-
-			for name in self.names:
-				context[name] = body_context[name]
-			return result
-
+@builtin_symbol("precond")
+class PreCondition(Macro):
+	# (precond condition implicit-progn...)
 	def __init__(self):
-		super().__init__(["names", ["body"]])
-	def evaluate(self, context, names, body):
-		loop = Loop.Instance(names, _wrap_progn(body))
-		result = evaluate(List([loop, *names]), context)
-		loop.alive = False
+		super().__init__(["condition", ["forms"]])
+	def evaluate(self, context, condition, forms):
+		f = push(condition, context)
+		yield
+		if not objects.truthy(f.result):
+			raise errors.AssertionError(condition, msg="Pre-condition failed.")
+		return wrap_progn(forms)
+
+
+@builtin_symbol("postcond")
+class PreCondition(Execution):
+	def __init__(self):
+		super().__init__(["condition", ["forms"]])
+
+	def evaluate(self, context, condition, forms):
+		# The post-condition is evaluated under the original context
+		# (thus considering the original parameter bindings in a function)
+		# and with the special name *result* providing the result value.
+		# This is to prove recursion: if the post-condition is dependent
+		# on the function internal names, a *recur* call cannot be skipped.
+		start_context = context.copy()
+
+		f = push(wrap_progn(forms), context)
+		yield
+		result = f.result
+		start_context["*result*"] = result
+
+		f = push(condition, start_context)
+		yield
+		if not objects.truthy(f.result):
+			raise errors.AssertionError(condition, msg="Post-condition failed.")
 		return result
+
+
+@builtin_symbol("invar")
+class Invariant(Macro):
+	def __init__(self):
+		super().__init__(["condition", ["forms"]])
+	def evaluate(self, context, condition, forms):
+		return List([
+			builtin_symbols["precond"], condition, List([
+				builtin_symbols["postcond"], condition, *forms])])
+		yield
+
+
+@builtin_symbol("apply")
+class Apply(Macro):
+	def __init__(self):
+		super().__init__(["f", "args"])
+	def evaluate(self, context, f, args):
+		f = push(args, context)
+		yield
+		args_cooked = f.result
+		try:
+			return List([f, *args_cooked])
+		except TypeError:
+			return List([f, args_cooked])
 
 
 @builtin_symbol("+")
@@ -238,7 +273,7 @@ def Subtraction(n, terms):
 @builtin_symbol("*")
 @function_execution(["terms"], conversion=Integer)
 def Multiplication(terms):
-	return product(map(_unwrap_int, terms))
+	return _product(map(_unwrap_int, terms))
 
 
 @builtin_symbol("/")
@@ -248,7 +283,7 @@ def Division(n, terms):
 	try:
 		if len(terms) == 0:
 			return 1 // n
-		return n // product(terms)
+		return n // _product(terms)
 	except ZeroDivisionError:
 		raise errors.DivideByZeroError
 
@@ -270,14 +305,14 @@ def _transitive_property(pred, a, b, more):
 		a = b
 		b = t
 		result = pred(a, b)
-	return result
+	return objects.wrap_bool(result)
 
 
 @builtin_symbol("=")
 @function_execution("a", "b", ["more"])
 def Equality(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.eq, a, b, more)
+	return _transitive_property(Form.equal, a, b, more)
 
 
 @builtin_symbol("<")
@@ -311,14 +346,16 @@ def GreaterEqual(a, b, more):
 # Empty conjunction is vacuously true.
 # (and) always holds as an axiom.
 @builtin_symbol("and")
-class Conjunction(jexec.Execution):
+class Conjunction(Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
 	def evaluate(self, context, terms):
-		result = True
+		result = true
 		for t in terms:
-			result = evaluate(t, context)
-			if not _truthy(result):
+			f = push(t, context)
+			yield
+			result = f.result
+			if not objects.truthy(result):
 				return result
 		return result
 
@@ -328,33 +365,35 @@ class Conjunction(jexec.Execution):
 # an empty (or) has no argument which is true.
 # (not (or)) always holds as an axiom.
 @builtin_symbol("or")
-class Disjunction(jexec.Execution):
+class Disjunction(Execution):
 	def __init__(self):
 		super().__init__([["terms"]])
 	def evaluate(self, context, terms):
-		result = False
+		result = false
 		for t in terms:
-			result = evaluate(t, context)
-			if _truthy(result):
+			f = push(t, context)
+			yield
+			result = f.result
+			if objects.truthy(result):
 				return result
 		return result
 
 
 @builtin_symbol("not")
-@function_execution("p")
+@function_execution("p", conversion=objects.wrap_bool)
 def Negation(p):
-	return not _truthy(p)
+	return not objects.truthy(p)
 
 
-# TODO Merge this with cond when optional param is implemented.
 @builtin_symbol("if")
-class Implication(jexec.Macro):
+class Implication(Macro):
 	def __init__(self):
-		super().__init__(["cond", "success", ["fail", True]])
-	def evaluate(self, context, cond, success, fail):
-		if _truthy(evaluate(cond, context)):
-			return success
-		return fail
+		super().__init__(["condition", "success", ["fail", true]])
+	def evaluate(self, context, condition, success, fail):
+		f = push(condition, context)
+		yield
+		condition = f.result
+		return success if objects.truthy(condition) else fail
 
 
 @builtin_symbol("print")
@@ -369,10 +408,10 @@ def Print(msg):
 def MakeList(elements):
 	return List(elements)
 
-@builtin_symbol("mlist")
-@function_execution(["elements"])
-def MakeMutableList(elements):
-	return MutableList(elements)
+#@builtin_symbol("mlist")
+#@function_execution(["elements"])
+#def MakeMutableList(elements):
+#	return MutableList(elements)
 
 
 @builtin_symbol("list?")
@@ -415,42 +454,46 @@ def Associate(lst, idx, val):
 	return List(copy)
 
 
-@builtin_symbol("assoc!")
-@function_execution("lst", "idx", "val")
-def MutatingAssociate(lst, idx, val):
-	if not isinstance(lst, MutableList):
-		raise errors.JimmyError("Provided list is not mutable.")
-	idx = _unwrap_int(idx)
-	try:
-		lst[idx % len(lst)] = val
-	except ZeroDivisionError:
-		raise errors.IndexError
-	return lst
+#@builtin_symbol("assoc!")
+#@function_execution("lst", "idx", "val")
+#def MutatingAssociate(lst, idx, val):
+#	if not isinstance(lst, MutableList):
+#		raise errors.JimmyError("Provided list is not mutable.")
+#	idx = _unwrap_int(idx)
+#	try:
+#		lst[idx % len(lst)] = val
+#	except ZeroDivisionError:
+#		raise errors.IndexError
+#	return lst
 
 
-@builtin_symbol("count")
+@builtin_symbol("len")
 @function_execution("lst")
-def Count(lst):
+def Length(lst):
 	return Integer(len(lst))
 
 
 @builtin_symbol("load")
-@function_execution("path")
-def Load(path):
-	if not isinstance(path, String):
-		raise errors.JimmyError("File path is not a string.")
-	import jim.reader
+class Load(Function):
+	def __init__(self):
+		super().__init__(["path"])
 
-	try:
-		with open(path.value) as f:
-			with jim.reader.fresh_reader_state():
-				forms = list(jim.reader.load_forms(lambda: f.read(1)))
-	except OSError as e:
-		raise errors.LoadError(e)
+	def evaluate(self, context, path):
+		if not isinstance(path, String):
+			raise errors.JimmyError("File path is not a string.")
+		import jim.reader
 
-	for form in forms:
-		interpreter.evaluate(form)
-	return nil
+		try:
+			with open(path.value) as f:
+				with jim.reader.fresh_reader_state():
+					forms = list(jim.reader.load_forms(lambda: f.read(1)))
+		except OSError as e:
+			raise errors.LoadError(e)
+
+		for form in forms:
+			push(form, context)
+			yield
+		return nil
 
 
 @builtin_symbol("__debug__")

@@ -1,108 +1,152 @@
-from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from collections import ChainMap
 
-import jim.evaluator.execution as jexec
 from .errors import *
+import jim.evaluator.execution as jexec
 from jim.objects import *
+from jim.debug import debug
 
 
-class AbstractContext(ABC):
-	@abstractmethod
-	def __init__(self, parent, bindings={}):
+class DeepCopyChainMap(ChainMap):
+	def __init__(self, *maps):
+		super().__init__(*maps)
+	def copy(self):
+		return DeepCopyChainMap(*(m.copy() for m in self.maps))
+
+class NilContext:
+	"""
+	A dummy dict-like at the end of the context chain
+	to raise UndefinedVariableError on failed name lookup.
+	"""
+	def __init__(self):
 		pass
-	@abstractmethod
 	def __getitem__(self, name):
-		pass
-	@abstractmethod
+		raise UndefinedVariableError(name)
 	def __setitem__(self, key, val):
-		pass
+		# Should never happen.
+		assert False
+	def copy(self):
+		return self
 
+def init_context(builtins=None):
+	if builtins is None:
+		from jim.evaluator.common_builtin import builtin_symbols
+		builtins = builtin_symbols
+	return DeepCopyChainMap(builtins.copy(), NilContext())
+
+
+stack = []
 
 class Stackframe:
-	def __init__(self, last_frame, call_form):
-		self.last_frame = last_frame
-		self.call_form = call_form
+	def __init__(self, form, context):
+		self.form = form
+		self.invocation_form = form
+		self.context = context
+		self.invocation = evaluate_frame(self)
+		self.result = None
 
-top_frame = None
-
-
-def iter_stack():
-	f = top_frame
-	while f is not None:
-		yield f
-		f = f.last_frame
+	def __repr__(self):
+		return f"<{self.form}, {self.result}>"
 
 
-@contextmanager
-def push_new_frame(call_form):
-	#print(f"DEBUG: PUSH: {call_form}")
-	global top_frame
-	top_frame = Stackframe(top_frame, call_form)
+def evaluate_frame(stackframe):
+	"""
+	Returns a generator which evaluates the form on the given stackframe,
+	yielding whenever another stackframe is pushed on top.
+	The result of the call is stored in the result field of the given frame.
+	"""
+	result = evaluate_simple_form(stackframe.form, stackframe.context)
+	if result is not push:
+		stackframe.result = result
+		return
+
+	target, *args = stackframe.form
+
+	# Poor man's Future with generators.
+	f = push(target, stackframe.context)
+	yield
+	target = f.result
+
+	if not isinstance(target, Execution):
+		raise JimmyError("Invocation target is invalid.", stackframe.form)
+
+	if isinstance(target, jexec.EvaluateIn):
+		for i, arg in enumerate(args):
+			f = push(arg, stackframe.context)
+			yield
+			args[i] = f.result
+
+	stackframe.invocation_form = List([target, *args])
+
 	try:
-		yield top_frame
-	except:
-		raise
-	finally:
-		top_frame = top_frame.last_frame
-		#print(f"DEBUG: POP: {call_form}")
+		matched_args = jexec.fill_parameters(target.parameter_spec, args)
+	except jexec.ArgumentMismatchError:
+		raise ArgumentMismatchError(stackframe.form) from None
+
+	target_eval = target.evaluate(stackframe.context, **matched_args)
+	try:
+		while True:
+			yield next(target_eval)
+	except StopIteration as e:
+		stackframe.result = e.value
+
+	if isinstance(target, jexec.EvaluateOut):
+		f = push(stackframe.result, stackframe.context)
+		yield
+		stackframe.result = f.result
+
+
+def push(form, context):
+	frame = Stackframe(form, context)
+	stack.append(frame)
+	return frame
+
+def pop():
+	return stack.pop().result
 
 
 def evaluate(obj, context):
-	"""
-	Evaluates a form under the specified context.
-	Returns the evaluated value; the context may be mutated as part of evaluation.
-	"""
+	zero = len(stack)
+	# Because we can also call this with a non-empty initial stack
+	# in the middle of evaluating an execution.
+	push(obj, context)
 
-	#print(f"DEBUG: evaluate: {obj}")
+	while True:
+		try:
+			next(stack[-1].invocation)
+		except JimmyError:
+			pop()
+			raise
+		except StopIteration:
+			ret = pop()
+			if len(stack) == zero:
+				return ret
+		except Exception as e:
+			# Take the first one that isn't empty.
+			raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
 
-	import jim.objects  # specifically for the nil match below
+
+def evaluate_simple_form(obj, context):
 	match obj:
-		# These objects are self-evaluating.
-		case (True | False | jim.objects.nil
-				| Integer() | String() | jexec.Execution()):
-			return obj
-
 		case Symbol(value=name):
 			return context[name]
+
+		# Other atoms are self-evaluating objects.
+		case Atom():
+			return obj
 
 		case List():
 			if len(obj) == 0:
 				return nil
-			try:
-				return invoke(obj, context)
-			except JimmyError:
-				raise
-			except Exception as e:
-				raise JimmyError(str(e), obj)
+
+			# Instructs the caller to push and retrieve the result later.
+			return push
+
+		case None:
+			# Special case: None means a no-op.
+			return None
 
 		case _:
-			for i, frame in enumerate(reversed(list(iter_stack()))):
-				print(f"DEBUG: {i}: {frame.call_form}")
-			print(f"DEBUG: raw object: {obj}")
+			for i, frame in enumerate(stack):
+				debug(f"{i}: {frame.form}")
+			debug(f"raw object: {obj}")
 			assert False  # We should never see raw python object.
-
-
-def invoke(lst, context):
-	execution = evaluate(lst[0], context)
-	args = lst[1:]
-
-	if not isinstance(execution, jexec.Execution):
-		raise JimmyError("Invocation target is invalid.", lst)
-
-	if isinstance(execution, jexec.EvaluateIn):
-		args = map(lambda arg: evaluate(arg, context), args)
-
-	#print(f"DEBUG: invoke: {lst}")
-
-	try:
-		matched_params = jexec.fill_parameters(execution.parameter_spec, args)
-	except jexec.ArgumentMismatchError:
-		raise ArgumentMismatchError(lst) from None
-
-	with push_new_frame(lst):
-		result = execution.evaluate(context, **matched_params)
-
-	if isinstance(execution, jexec.EvaluateOut):
-		return evaluate(result, context)
-	else:
-		return result
