@@ -49,18 +49,31 @@ def _flatten(coll):
 	return reduce(combine, coll, [])
 
 
-def function_execution(*param_spec, conversion=lambda x: x):
+def function_execution(*param_spec, conversion=lambda x: x, allow_unknown=False):
 	"""
 	Decorates a function to be an execution.Function class,
 	passing through the param_spec to init and using the function
 	as the evaluate implementation.
 	A conversion function can be specified to be applied to the return value.
 	"""
+	def any_unknown(locals):
+		if any(map(UnknownValue.is_instance, locals.values())):
+			return True
+		# Check the rest param. (Technically there could be more than one.)
+		rest_params = filter(lambda l: len(l) == 1, param_spec)
+		for p in rest_params:
+			if any(map(UnknownValue.is_instance, locals[p[0]])):
+				return True
+		return False
+
 	def decorator(fn):
 		def __init__(self):
 			super(type(self), self).__init__(param_spec)
 		def evaluate(self, calling_context, **locals):
-			return conversion(fn(**locals))
+			if not allow_unknown and any_unknown(locals):
+				return UnknownValue()
+			else:
+				return conversion(fn(**locals))
 			yield
 		# Creates a class of the same name, with Function as parent.
 		return type(fn.__name__, (Function,),
@@ -143,7 +156,9 @@ class UserExecution(Execution):
 			return f.result
 
 		def __eq__(self, other):
-			return False
+			return self is other
+		def __hash__(self):
+			return object.__hash__(self)
 
 	def __init__(self):
 		super().__init__(["param_spec", ["body"]])
@@ -171,7 +186,7 @@ class UserExecution(Execution):
 	def evaluate(self, calling_context, param_spec, body):
 		execution = self.Instance(
 				UserExecution.prepare_param_spec(param_spec, calling_context),
-				common.wrap_progn(body),
+				wrap_progn(body),
 				closure=calling_context.copy())
 		execution.closure["*recur*"] = execution
 		return execution
