@@ -113,6 +113,8 @@ class Execution(Atom):
 	def __eq__(self, other):
 		# Correct for builtins.
 		return type(self) == type(other)
+	def __hash__(self):
+		return object.__hash__(self)
 
 	def evaluate(self, calling_context, **locals):
 		# Technically, we don't need locals, as that can exist as another context
@@ -135,6 +137,15 @@ class UnknownValue(Atom):
 		return f"unk{self.id}"
 	def __str__(self):
 		return repr(self)
+	def __eq__(self, other):
+		return self is other
+	def __hash__(self):
+		return object.__hash__(self)
+
+	@staticmethod
+	def is_instance(obj):
+		# Not better than isinstance, but saves a lambda.
+		return isinstance(obj, UnknownValue)
 
 
 class List(list, Form):
@@ -149,6 +160,8 @@ class List(list, Form):
 	def __hash__(self):
 		# To allow usage as dict keys.
 		return hash(tuple(self))
+	def __contains__(self, item):
+		return super().__contains__(item) or any(item in e for e in self.elements)
 
 
 #class MutableList(List):

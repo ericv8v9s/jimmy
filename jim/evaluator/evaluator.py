@@ -1,6 +1,6 @@
 from collections import ChainMap
 
-from .errors import *
+import jim.evaluator.errors as errors
 import jim.evaluator.execution as jexec
 from jim.objects import *
 from jim.debug import debug
@@ -20,7 +20,7 @@ class NilContext:
 	def __init__(self):
 		pass
 	def __getitem__(self, name):
-		raise UndefinedVariableError(name)
+		raise errors.UndefinedVariableError(name)
 	def __setitem__(self, key, val):
 		# Should never happen.
 		assert False
@@ -67,7 +67,7 @@ def evaluate_frame(stackframe):
 	target = f.result
 
 	if not isinstance(target, Execution):
-		raise JimmyError("Invocation target is invalid.", stackframe.form)
+		raise errors.JimmyError("Invocation target is invalid.", stackframe.form)
 
 	if isinstance(target, jexec.EvaluateIn):
 		for i, arg in enumerate(args):
@@ -80,7 +80,7 @@ def evaluate_frame(stackframe):
 	try:
 		matched_args = jexec.fill_parameters(target.parameter_spec, args)
 	except jexec.ArgumentMismatchError:
-		raise ArgumentMismatchError(stackframe.form) from None
+		raise errors.ArgumentMismatchError(stackframe.form) from None
 
 	target_eval = target.evaluate(stackframe.context, **matched_args)
 	try:
@@ -113,16 +113,16 @@ def evaluate(obj, context):
 	while True:
 		try:
 			next(stack[-1].invocation)
-		except JimmyError:
-			pop()
-			raise
 		except StopIteration:
 			ret = pop()
 			if len(stack) == zero:
 				return ret
 		except Exception as e:
+			while len(stack) > 0:
+				pop()
 			# Take the first one that isn't empty.
-			raise JimmyError(str(e) or repr(e) or str(type(e)), obj)
+			#raise errors.JimmyError(str(e) or repr(e) or str(type(e)), obj)
+			raise
 
 
 def evaluate_simple_form(obj, context):

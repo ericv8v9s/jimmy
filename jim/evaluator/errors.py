@@ -30,6 +30,10 @@ class AssertionError(JimmyError):
 	def __init__(self, assertion, msg="Assertion not satisfied."):
 		super().__init__(msg, assertion)
 
+class ContradictionError(JimmyError):
+	def __init__(self, form, value1, value2):
+		super().__init__(f"Form evaluated to be both {value1!r} and {value2!r}.", form)
+
 class LoadError(JimmyError):
 	def __init__(self, cause, msg="Failed to load file."):
 		super().__init__(msg + " " + str(cause))

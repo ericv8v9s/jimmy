@@ -1,35 +1,49 @@
+from .evaluator import evaluate
+from jim import reader
+from jim.evaluator.evaluator import init_context
+from jim.evaluator.errors import JimmyError, format_error
+import sys
+
+
 def main(argv):
-	import sys
-	from jim import reader, main
-	import jim.checker.errors as jerrors
-	from .interpreter import top_level_evaluate, show_proof_state
+	context = init_context()
 
 	match argv:
+		case []:  # interactive mode
+			forms = reader.load_forms(lambda: sys.stdin.read(1))
+			while True:
+				print("<- ", end="", flush=True)
+				try:
+					form = next(forms)
+				except reader.ParseError as e:
+					print(repr(e), file=sys.stderr)
+					break
+				except StopIteration:
+					break
+
+				try:
+					result = evaluate(form, context)
+					if result is not None:
+						print("->", repr(result), flush=True)
+				except JimmyError as e:
+					print(format_error(e), file=sys.stderr)
+
 		case [filename]:
 			if filename == "-":
 				f = sys.stdin
 			else:
 				f = open(filename)
 			with f:
-				proof_correct = True
-				while proof_correct:
-					try:
-						form = reader.parse(lambda: f.read(1))
-						if form is None:
-							break
-						top_level_evaluate(form)
-					except reader.ParseError as e:
-						print(str(e), file=sys.stderr)
-						proof_correct = False
-					except jerrors.JimmyError as e:
-						print(jerrors.format_error(e), file=sys.stderr)
-						proof_correct = False
-
-				show_proof_state()
-				if proof_correct:
-					print("Proof is valid.")
-				else:
-					print("PROOF FAILED")
+				try:
+					for form in reader.load_forms(lambda: f.read(1)):
+						#print("REPROD:", str(form).rstrip())
+						evaluate(form, context)
+				except reader.ParseError as e:
+					sys.exit(e)
+				except JimmyError as e:
+					print(format_error(e), file=sys.stderr)
+					sys.exit(2)
 
 		case _:
-			main.print_usage()
+			import jim.main
+			jim.main.print_usage()

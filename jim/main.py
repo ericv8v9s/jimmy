@@ -1,7 +1,7 @@
 def print_usage():
 	import sys
-	print(f"Usage: {sys.argv[0]} [run filename]\n"
-	      f"    OR {sys.argv[0]} check filename")
+	print(f"Usage: {sys.argv[0]} [run [filename]]\n"
+	      f"    OR {sys.argv[0]} check [filename]")
 
 
 def main(argv):

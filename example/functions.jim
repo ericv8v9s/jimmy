@@ -1,6 +1,6 @@
 (def reduce (fn (combine initial values)
-	(if (> (count values) 0)
-		(recur
+	(if (> (len values) 0)
+		(*recur*
 			combine
 			(combine initial (get values 0))
 			(rest values))
