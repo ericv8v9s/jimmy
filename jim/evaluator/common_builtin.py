@@ -1,11 +1,12 @@
+from functools import reduce
+import operator as ops
+from itertools import pairwise, filterfalse, starmap
+
 from jim.objects import *
 import jim.objects as objects  # is_mutable, truthy, wrap_bool
 from jim.evaluator.execution import Function, Macro
 import jim.evaluator.errors as errors
 from jim.evaluator.evaluator import push, evaluate
-
-from functools import reduce
-import operator as ops
 
 
 builtin_symbols = {
@@ -209,10 +210,13 @@ class PreCondition(Macro):
 		return wrap_progn(forms)
 
 
-@builtin_symbol("postcond")
-class PreCondition(Execution):
-	def __init__(self):
+# A variant of postcond that is to be used in loops
+# and allows final bindings of loop variables to be used in the post-condition.
+class ParameterizedPostCondition(Execution):
+	def __init__(self, variables):
 		super().__init__(["condition", ["forms"]])
+		# These names are make available to the post-condition.
+		self.variables = variables
 
 	def evaluate(self, context, condition, forms):
 		# The post-condition is evaluated under the original context
@@ -220,6 +224,30 @@ class PreCondition(Execution):
 		# and with the special name *result* providing the result value.
 		# This is to prove recursion: if the post-condition is dependent
 		# on the function internal names, a *recur* call cannot be skipped.
+		# Some variables are copied to the context for post-condition checking.
+		# These should be the loop variables, which are effectively
+		# a form of return value.
+		start_context = context.copy()
+		f = push(wrap_progn(forms), context)
+		yield
+		result = f.result
+
+		for name in self.variables:
+			start_context[name] = context[name]
+		start_context["*result*"] = result
+
+		f = push(condition, start_context)
+		yield
+		if not objects.known_and_true(f.result):
+			raise errors.AssertionError(condition, msg="Post-condition failed.")
+		return result
+
+@builtin_symbol("postcond")
+class PostCondition(ParameterizedPostCondition):
+	def __init__(self):
+		super().__init__([])
+
+	def evaluate(self, context, condition, forms):
 		start_context = context.copy()
 
 		f = push(wrap_progn(forms), context)
@@ -301,49 +329,75 @@ def Modulo(x, y):
 	return x % y
 
 
-def transitive_property(pred, a, b, more):
-	result = pred(a, b)
-	for t in more:
-		if not result:
-			break
-		a = b
-		b = t
-		result = pred(a, b)
-	return objects.wrap_bool(result)
+def check_transitive_property(bipred, terms):
+	# This checks the following, assuming bipred is transitive:
+	# for all t_i, t_j in terms, if i < j, then bipred(t_i, t_j).
+
+	terms = list(terms)
+	if len(terms) <= 1:
+		return true  # Vacuously true.
+
+	knowns = list(filter(objects.is_known, terms))
+
+	# Any known pair failing is sufficient for overall fail.
+	for x, y in pairwise(knowns):
+		if not bipred(x, y):
+			return false
+
+	if len(knowns) == len(terms):
+		# All terms were known and all satisfied bipred.
+		return true
+	else:  # There was at least one unknown that we cannot determine.
+		return UnknownValue()
 
 
 @builtin_symbol("=")
 @function_execution("a", "b", ["more"])
 def Equality(a, b, more):
-	return transitive_property(Form.equal, a, b, more)
+	terms = [a, b, *more]
+	knowns = list(filter(objects.is_known, terms))
+	unknowns = list(filterfalse(objects.is_known, terms))
+
+	# First check all the known values.
+	if not check_transitive_property(Form.equal, knowns):
+		# Safe cast because checking knowns could not yield an UnknownValue.
+		return false
+
+	# The known values are equal. Do we have any unknowns?
+	if len(unknowns) != 0:
+		if len(knowns) == 0:
+			# All unknowns and no known values.
+			# true if all terms are the same unknown.
+			return objects.wrap_bool(all(starmap(Form.equal, pairwise(terms))))
+		else:
+			# Mix of knowns and unknowns.
+			return UnknownValue()
+	# No unknowns.
+	return true
 
 
 @builtin_symbol("<")
 @function_execution("a", "b", ["more"])
 def LessThan(a, b, more):
-	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return transitive_property(ops.lt, a, b, more)
+	return check_transitive_property(ops.lt, map(_unwrap_int, [a, b, *more]))
 
 
 @builtin_symbol(">")
 @function_execution("a", "b", ["more"])
 def GreaterThan(a, b, more):
-	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return transitive_property(ops.gt, a, b, more)
+	return check_transitive_property(ops.gt, map(_unwrap_int, [a, b, *more]))
 
 
 @builtin_symbol("<=")
 @function_execution("a", "b", ["more"])
 def LessEqual(a, b, more):
-	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return transitive_property(ops.le, a, b, more)
+	return check_transitive_property(ops.le, map(_unwrap_int, [a, b, *more]))
 
 
 @builtin_symbol(">=")
 @function_execution("a", "b", ["more"])
 def GreaterEqual(a, b, more):
-	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return transitive_property(ops.ge, a, b, more)
+	return check_transitive_property(ops.ge, map(_unwrap_int, [a, b, *more]))
 
 
 # Empty conjunction is vacuously true.

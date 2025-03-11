@@ -90,7 +90,9 @@ def delegate_concrete_to(name):
 # Omitted builtins either should not or do not need to be delegated.
 _delegated_symbols = {
 	"number?", "list?", "get", "rest", "conj", "assoc", "len",
-	"+", "-", "*", "/", "%", "<", ">", "<=", ">="}
+	"+", "-", "*", "/", "%"}
+# Common executions that do not need to go through delegation wrapping.
+_pure_commons = {"=", "<", ">", "<=", ">=", "and", "or", "not"}
 # Implication cannot be pure (for now) because
 # by the conditional evaluation necessitated by the nature of "if",
 # the evaluation of the form depends on the context.
@@ -108,20 +110,8 @@ def _add_delegation(name):
 for name in _delegated_symbols:
 	_add_delegation(name)
 
-
-@pure
-@builtin_symbol("=")
-@delegate_concrete_to("=")
-class Equality:
-	def evaluate(self, context, a, b, more):
-		if not common.transitive_property(Form.equal, a, b, more):
-			if all(map(objects.is_known, [a, b, *more])):
-				# All values are known and not equal.
-				return false
-			# Otherwise, some is not known.
-			return UnknownValue()
-		return true
-		yield
+for name in _pure_commons:
+	pure(type(common.builtin_symbols[name]))
 
 
 ################################################################################
@@ -160,7 +150,8 @@ def _collect_conditions(context, progn_like, pre_or_post: bool):
 		return []
 
 	# Otherwise, the form must be one of precond, postcond, or invar.
-	if head not in [bs["precond"], bs["postcond"], bs["invar"]]:
+	if not (head is bs["precond"] or head is bs["invar"]
+			or isinstance(head, common.ParameterizedPostCondition)):
 		return []
 
 	if len(rest) == 0:  # Not a valid condition.
@@ -280,12 +271,9 @@ class UserFunction(UserExecution):
 			return result
 
 	def evaluate(self, context, param_spec, body):
-		evaluation = super().evaluate(context, param_spec, body)
-		try:
-			while True: yield next(evaluation)
-		except StopIteration as e:
-			execution = e.value
-		return execution
+		return super().evaluate(
+			context.new_child({"postcond": common.builtin_symbols["postcond"]}),
+			param_spec, body)
 
 
 @common.builtin_symbol("loop")
@@ -293,49 +281,64 @@ class Loop(UserExecution):
 	# Not pure because each recur changes the loop variable bindings.
 	class Instance(ConditionalMixin, EvaluateIn, UserExecution.Instance):
 		def __init__(self, names, body, closure):
-			# Loop instance only accepts positional params corresponding to variables
-			# to send back to the calling context.
-			self.names = list(map(lambda n: n.value, names))
-			preconds = _collect_conditions(closure, common.wrap_progn(body), True)
-			# Recursion only allowed in post-conditions.
+			# loop needs parameterized postcond.
+			closure = closure.new_child(
+				{"postcond": common.ParameterizedPostCondition(names)})
+			preconds = _collect_conditions(closure, body, True)
 			postconds = _collect_conditions(
-					closure.new_child({"*recur*": self}),
-					common.wrap_progn(body), False)
-			# TODO
-			super().__init__(self.names, self.body, closure)
+				closure.new_child({"*recur*": self}), body, False)
+			super().__init__(names,body, closure,
+				pre_conditions=preconds, post_conditions=postconds)
 			self.alive = True
 
-		def evaluate(self, context, **locals):
+		def evaluate(self, calling_context, **locals):
 			if not self.alive:
 				raise errors.JimmyError("Cannot invoke loop iteration outside of loop.")
 
-			body_context = context.new_child(locals)
-			body_context["*recur*"] = self
-			result = interpreter.evaluate(self.body, body_context)
+			# Check pre-conditions on actual arguments.
+			yield from self.check_preconds(self.closure.new_child(locals))
 
-			for name in self.names:
-				context[name] = body_context[name]
+			# Mask all input arguments.
+			masked_locals = {name: UnknownValue() for name in locals}
+			body_context = self.closure.new_child(masked_locals)
+			body_context["*recur*"] = self
+
+			if self.verified:
+				result = UnknownValue()
+			else:
+				self.verified = True
+				# Assume the masked arguments satisfies the pre-conditions.
+				yield from _make_truths(self.pre_conditions, self.closure, masked_locals)
+				# Evaluate body and retrieve return value.
+				# Post-conditions are checked as part of evaluation.
+				# *result* is available to postcond as postcond handles it internally.
+				f = checker.push(self.body, body_context)
+				yield
+				result = f.result
+
+			# Successful evaluation implies post-conditions are satisfied.
+			for name in self.parameter_spec:
+				calling_context[name] = body_context[name]
+			# But *result* needs to be explicit here.
+			yield from _make_truths(self.post_conditions, calling_context.new_child(
+					{"*result*": result, "*recur*": self}))
+
 			return result
 
-	def __init__(self):
-		super().__init__()
-
 	def evaluate(self, context, param_spec, body):
+		# Loop instance only accepts positional params corresponding to variables
+		# to send back to the calling context.
 		def is_symbol(n): return isinstance(n, Symbol)
 		if not all(map(is_symbol, param_spec)):
 			raise errors.JimmyError("Loop variable is not an identifier.")
 
-		preconds, postconds = _collect_conditions(context, common.wrap_progn(body))
-		evaluation = super().evaluate(
-				context, param_spec, body,
-				pre_conditions=preconds, post_conditions=postconds)
+		evaluation = super().evaluate(context, param_spec, body)
 		try:
-			while True: yield next(evaluation)
+			next(evaluation)
 		except StopIteration as e:
-			execution = e.value
-		return execution
+			loop = e.value
 
-		loop = Loop.Instance(param_spec, common.wrap_progn(body))
-		result = interpreter.evaluate(List([loop, *names]), context)
+		f = checker.push(List([loop, *param_spec]), context)
+		yield
 		loop.alive = False
-		return result
+		return f.result
