@@ -1,9 +1,9 @@
 from collections import ChainMap
+from jim.debug import debug, trace_entry, trace_exit
 
 import jim.evaluator.errors as errors
 import jim.evaluator.execution as jexec
 from jim.objects import *
-from jim.debug import debug
 
 
 class DeepCopyChainMap(ChainMap):
@@ -24,6 +24,8 @@ class NilContext:
 	def __setitem__(self, key, val):
 		# Should never happen.
 		assert False
+	def items(self):
+		return ()
 	def copy(self):
 		return self
 
@@ -41,8 +43,8 @@ class Stackframe:
 		self.form = form
 		self.invocation_form = form
 		self.context = context
-		self.invocation = evaluate_frame(self)
 		self.result = None
+		self.invocation = evaluate_frame(self)
 
 	def __repr__(self):
 		return f"<{self.form}, {self.result}>"
@@ -96,10 +98,12 @@ def evaluate_frame(stackframe):
 
 
 def push(form, context):
+	debug(f"CALL: push({form})")
 	frame = Stackframe(form, context)
 	stack.append(frame)
 	return frame
 
+@trace_exit
 def pop():
 	return stack.pop().result
 

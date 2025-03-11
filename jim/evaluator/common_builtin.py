@@ -56,24 +56,11 @@ def function_execution(*param_spec, conversion=lambda x: x, allow_unknown=False)
 	as the evaluate implementation.
 	A conversion function can be specified to be applied to the return value.
 	"""
-	def any_unknown(locals):
-		if any(map(UnknownValue.is_instance, locals.values())):
-			return True
-		# Check the rest param. (Technically there could be more than one.)
-		rest_params = filter(lambda l: len(l) == 1, param_spec)
-		for p in rest_params:
-			if any(map(UnknownValue.is_instance, locals[p[0]])):
-				return True
-		return False
-
 	def decorator(fn):
 		def __init__(self):
-			super(type(self), self).__init__(param_spec)
+			Function.__init__(self, param_spec)
 		def evaluate(self, calling_context, **locals):
-			if not allow_unknown and any_unknown(locals):
-				return UnknownValue()
-			else:
-				return conversion(fn(**locals))
+			return conversion(fn(**locals))
 			yield
 		# Creates a class of the same name, with Function as parent.
 		return type(fn.__name__, (Function,),
@@ -84,7 +71,7 @@ def function_execution(*param_spec, conversion=lambda x: x, allow_unknown=False)
 @builtin_symbol("assert")
 @function_execution("expr")
 def Assertion(expr):
-	if not objects.truthy(expr):
+	if not objects.known_and_true(expr):
 		raise errors.AssertionError(expr)
 	return nil
 
@@ -183,11 +170,13 @@ class UserExecution(Execution):
 							"The parameter specification is invalid.", p)
 		return param_spec
 
-	def evaluate(self, calling_context, param_spec, body):
+	def evaluate(self, calling_context, param_spec, body, **extra_kws):
+		# Instance can refer to a different impl from above defined by a sub-class.
 		execution = self.Instance(
 				UserExecution.prepare_param_spec(param_spec, calling_context),
 				wrap_progn(body),
-				closure=calling_context.copy())
+				closure=calling_context.copy(),
+				**extra_kws)
 		execution.closure["*recur*"] = execution
 		return execution
 		yield
@@ -215,7 +204,7 @@ class PreCondition(Macro):
 	def evaluate(self, context, condition, forms):
 		f = push(condition, context)
 		yield
-		if not objects.truthy(f.result):
+		if not objects.known_and_true(f.result):
 			raise errors.AssertionError(condition, msg="Pre-condition failed.")
 		return wrap_progn(forms)
 
@@ -240,7 +229,7 @@ class PreCondition(Execution):
 
 		f = push(condition, start_context)
 		yield
-		if not objects.truthy(f.result):
+		if not objects.known_and_true(f.result):
 			raise errors.AssertionError(condition, msg="Post-condition failed.")
 		return result
 
@@ -261,9 +250,9 @@ class Apply(Macro):
 	def __init__(self):
 		super().__init__(["f", "args"])
 	def evaluate(self, context, f, args):
-		f = push(args, context)
+		frame = push(args, context)
 		yield
-		args_cooked = f.result
+		args_cooked = frame.result
 		try:
 			return List([f, *args_cooked])
 		except TypeError:
@@ -312,7 +301,7 @@ def Modulo(x, y):
 	return x % y
 
 
-def _transitive_property(pred, a, b, more):
+def transitive_property(pred, a, b, more):
 	result = pred(a, b)
 	for t in more:
 		if not result:
@@ -326,53 +315,46 @@ def _transitive_property(pred, a, b, more):
 @builtin_symbol("=")
 @function_execution("a", "b", ["more"])
 def Equality(a, b, more):
-	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(Form.equal, a, b, more)
+	return transitive_property(Form.equal, a, b, more)
 
 
 @builtin_symbol("<")
 @function_execution("a", "b", ["more"])
 def LessThan(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.lt, a, b, more)
+	return transitive_property(ops.lt, a, b, more)
 
 
 @builtin_symbol(">")
 @function_execution("a", "b", ["more"])
 def GreaterThan(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.gt, a, b, more)
+	return transitive_property(ops.gt, a, b, more)
 
 
 @builtin_symbol("<=")
 @function_execution("a", "b", ["more"])
 def LessEqual(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.le, a, b, more)
+	return transitive_property(ops.le, a, b, more)
 
 
 @builtin_symbol(">=")
 @function_execution("a", "b", ["more"])
 def GreaterEqual(a, b, more):
 	a, b, *more = map(_unwrap_int, [a, b, *more])
-	return _transitive_property(ops.ge, a, b, more)
+	return transitive_property(ops.ge, a, b, more)
 
 
 # Empty conjunction is vacuously true.
 # (and) always holds as an axiom.
 @builtin_symbol("and")
-class Conjunction(Execution):
-	def __init__(self):
-		super().__init__([["terms"]])
-	def evaluate(self, context, terms):
-		result = true
-		for t in terms:
-			f = push(t, context)
-			yield
-			result = f.result
-			if not objects.truthy(result):
-				return result
-		return result
+@function_execution(["terms"])
+def Conjunction(terms):
+	# True only if all terms are true, so unknown if any term is unknown.
+	if all(map(objects.is_known, terms)):
+		return objects.wrap_bool(all(map(objects.truthy, terms)))
+	return UnknownValue()
 
 
 # Empty disjunction is vacuously false.
@@ -380,34 +362,37 @@ class Conjunction(Execution):
 # an empty (or) has no argument which is true.
 # (not (or)) always holds as an axiom.
 @builtin_symbol("or")
-class Disjunction(Execution):
-	def __init__(self):
-		super().__init__([["terms"]])
-	def evaluate(self, context, terms):
-		result = false
-		for t in terms:
-			f = push(t, context)
-			yield
-			result = f.result
-			if objects.truthy(result):
-				return result
-		return result
+@function_execution(["terms"])
+def Disjunction(terms):
+	# Return the first truthy value.
+	for t in terms:
+		if objects.known_and_true(t):
+			return t
+	# Otherwise, if there is any unknown, then the whole form is unknown.
+	if not all(map(objects.is_known, terms)):
+		return UnknownValue()
+	# False only if all values are known to be false.
+	return false
 
 
 @builtin_symbol("not")
-@function_execution("p", conversion=objects.wrap_bool)
+@function_execution("p")
 def Negation(p):
-	return not objects.truthy(p)
+	if objects.is_known(p):
+		return objects.wrap_bool(not objects.truthy(p))
+	return UnknownValue()
 
 
 @builtin_symbol("if")
-class Implication(Macro):
+class IfCondition(Macro):
 	def __init__(self):
 		super().__init__(["condition", "success", ["fail", true]])
 	def evaluate(self, context, condition, success, fail):
 		f = push(condition, context)
 		yield
 		condition = f.result
+		if isinstance(condition, UnknownValue):
+			return UnknownValue()
 		return success if objects.truthy(condition) else fail
 
 

@@ -1,4 +1,5 @@
 (def fib (fn (n)
+	(postcond (= *result* (+ (*recur* (- n 1)) (*recur* (- n 2))))
 	(if (<= n 1)
 		(if (= n 1) 1 0)
-		(+ (*recur* (- n 1)) (*recur* (- n 2))))))
+		(+ (*recur* (- n 1)) (*recur* (- n 2)))))))

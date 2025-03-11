@@ -78,10 +78,15 @@ false = _False()
 
 
 def truthy(v):
+	if isinstance(v, UnknownValue):
+		return v
 	return wrap_bool(not (v is nil or v is false))
 
 def wrap_bool(b):
 	return true if b else false
+
+def known_and_true(v):
+	return is_known(v) and truthy(v)
 
 
 class Integer(Atom):
@@ -141,11 +146,13 @@ class UnknownValue(Atom):
 		return self is other
 	def __hash__(self):
 		return object.__hash__(self)
+	def __bool__(self):
+		# UnknownValue does not have a definite truth value.
+		# Explicitly use is_known instead.
+		assert False
 
-	@staticmethod
-	def is_instance(obj):
-		# Not better than isinstance, but saves a lambda.
-		return isinstance(obj, UnknownValue)
+def is_known(value):
+	return not isinstance(value, UnknownValue)
 
 
 class List(list, Form):

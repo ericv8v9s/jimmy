@@ -1,4 +1,5 @@
 from collections import ChainMap
+from jim.debug import trace_entry, trace_exit
 
 import jim.checker.builtin as builtin
 import jim.evaluator.evaluator as evaluator
@@ -13,9 +14,11 @@ from jim.objects import *
 # involving unknown value placeholders.
 # In order to track such evaluation results,
 # the just-before-call forms are used as key,
-known_evaluations = ChainMap()  # To allow branch exploration and backtrack.
+# This is a ChainMap to allow branch exploration and backtrack.
+known_evaluations = ChainMap()  
 
 
+@trace_entry
 def replace_value(old, new):
 	"""
 	Merges the old value with the new one,
@@ -39,10 +42,11 @@ def replace_value(old, new):
 
 	for frame in evaluator.stack:
 		for context in frame.context.maps:
-			for k, v in context:
+			for k, v in context.items():
 				context[k] = _replace_value_in_form(v)
 
 
+@trace_entry
 def assert_evaluation(invocation_form, value):
 	"""
 	Asserts that the form evaluates to the given value
@@ -83,6 +87,7 @@ def assert_evaluation(invocation_form, value):
 			raise ContradictionError(invocation_form, old, new)
 
 
+@trace_entry
 def evaluate_frame(stackframe):
 	result = evaluate_simple_form(stackframe.form, stackframe.context)
 	if result is not push:
