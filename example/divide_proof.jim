@@ -1,10 +1,12 @@
 (def divide (fn (x y)
-	(pre (number? x))
-	(pre (number? y))
-	(pre (> x 0))
-	(pre (> y 0))
-	(post (= x (+ r (* y q))))
-	(post (< r y))
+	(precond (and
+		(number? x)
+		(number? y)
+		(> x 0)
+		(> y 0))
+	(postcond (and
+		(= x (+ r (* y q)))
+		(< r y))
 
 	(def r x)
 	(def q 0)
@@ -19,17 +21,17 @@
 	; 5. Whenever an equality form is v-mapped True, as in this case,
 	;   the equal values are merged together.
 
-	[obtain (= r (+ r 0))]
+	(obtain (= r (+ r 0)))
 	; "obtain" is the re-iteration rule; it simply states something already shown.
 	; More accurately, it computes the rv-map of the form
 	; and the result is required to be True.
 
-	[obtain (= x (+ r 0))]
+	(obtain (= x (+ r 0)))
 	; Trivial because x, r, and (+ r 0) all rv-map to the same value.
 
-	[*0 y]
+	(*0 y)
 	; *0 is the axiom for (= 0 (* v 0))
-	[obtain (= x (+ r (* y q)))]
+	(obtain (= x (+ r (* y q))))
 	; Because (= q 0), both (* y q) and (* y 0) r-maps to the same r-value,
 	; which in turn v-map to 0 thanks to mult0. So the form reduces to (+ r 0).
 
@@ -37,11 +39,11 @@
 	; def in [] context associates a truth with a name.
 	; These names do not participate in normal name lookup.
 
-	[show-proof-state before-while]
+	;[show-proof-state before-while]
 
 	(loop (r q)
-		[invar (= x (+ r (* y q)))]
-		[post (not (<= y r))]
+		(invar (= x (+ r (* y q)))
+		(post (not (<= y r))
 		((by-cases (and (not (<= y r)) (= x (+ r (* q y)))))
 			; Prove the post-conditions by cases.
 			(if (<= y r)
@@ -70,10 +72,10 @@
 					; so it similarly commits new v-maps for r and q.
 					; However, these do not correspond to (- r y) and (+ q 1) since
 					; the recur itself may have gone through more recur.
-					(recur (- r y) (+ q 1)))))
-		(and-elim (and (not (<= y r)) (= x (+ r (* q y))))))
+					(*recur* (- r y) (+ q 1)))))
+		(and-elim (and (not (<= y r)) (= x (+ r (* q y))))))))
 
-	[obtain (not (<= y r))]  ; by the loop post-condition
-	[obtain (= x (+ r (* q y)))]  ; by the loop invariant
+	(obtain (not (<= y r)))  ; by the loop post-condition
+	(obtain (= x (+ r (* q y))))  ; by the loop invariant
 
-	(list q r)))
+	(list q r)))))
