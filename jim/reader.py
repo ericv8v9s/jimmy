@@ -9,7 +9,7 @@ from jim.objects import *
 
 _SPACES = set(whitespace)
 _DIGITS = set(digits)
-_SEPARATORS = set("()[]") | _SPACES | {""}
+_SEPARATORS = set("()") | _SPACES | {""}
 
 
 # The parser is unfortunately stateful...
