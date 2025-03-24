@@ -7,8 +7,11 @@ from jim.objects import *
 
 
 class DeepCopyChainMap(ChainMap):
+	# This exists so that closures are copied correctly.
 	def __init__(self, *maps):
 		super().__init__(*maps)
+	# Don't actually need to override new_child and parents;
+	# ChainMap constructs the subclass correctly.
 	def copy(self):
 		return DeepCopyChainMap(*(m.copy() for m in self.maps))
 

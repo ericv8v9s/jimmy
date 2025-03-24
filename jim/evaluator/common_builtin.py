@@ -445,9 +445,9 @@ class IfCondition(Macro):
 		f = push(condition, context)
 		yield
 		condition = f.result
-		if isinstance(condition, UnknownValue):
-			return UnknownValue()
-		return success if objects.truthy(condition) else fail
+		if is_known(condition):
+			return success if objects.truthy(condition) else fail
+		return UnknownValue()
 
 
 @builtin_symbol("print")

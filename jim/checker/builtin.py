@@ -4,6 +4,7 @@ import jim.checker.evaluator as checker
 from jim.evaluator.execution import EvaluateIn
 import jim.evaluator.common_builtin as common
 import jim.evaluator.errors as errors
+import jim.evaluator.execution as execution
 from jim.objects import *
 import jim.objects as objects
 
@@ -186,21 +187,20 @@ class ConditionalMixin:
 		self.post_conditions = tuple(post_conditions)
 
 	def check_preconds(self, context):
-		yield from _check_conditions(self.pre_conditions, context,
-				fail_msg="Pre-condition failed.")
+		for cond in self.pre_conditions:
+			yield from _check_condition(cond, context, fail_msg="Pre-condition failed.")
 
 	# Not actually used. The check happens as part of evaluation.
 	def check_postconds(self, start_context, result):
-		yield from _check_conditions(self.post_conditions, context,
-				fail_msg="Post-condition failed.")
+		for cond in self.post_conditions:
+			yield from _check_condition(cond, context, fail_msg="Post-condition failed.")
 
 
-def _check_conditions(conditions, context, fail_msg):
-	for condition in conditions:
-		f = checker.push(condition, context)
-		yield
-		if not objects.known_and_true(f.result):
-			raise errors.AssertionError(condition, msg=fail_msg)
+def _check_condition(condition, context, fail_msg):
+	f = checker.push(condition, context)
+	yield
+	if not objects.known_and_true(f.result):
+		raise errors.AssertionError(condition, msg=fail_msg)
 
 
 def _make_truths(conditions, context, mask=None):
@@ -209,11 +209,7 @@ def _make_truths(conditions, context, mask=None):
 	"""
 	masked_context = context if mask is None else context.new_child(mask)
 	for condition in conditions:
-		# Compute condition with unknowns and set the result to be true.
-		f = checker.push(condition, masked_context)
-		yield
-		f.result = true
-		checker.assert_evaluation(f.invocation_form, true)
+		checker.mark_as_true(condition, masked_context)
 
 
 class UserExecution(common.UserExecution):
@@ -228,7 +224,7 @@ class UserExecution(common.UserExecution):
 			self.verified = False
 
 
-@common.builtin_symbol("fn")
+@builtin_symbol("fn")
 class UserFunction(UserExecution):
 	# Function definition forms are not pure due to progn body and closure,
 	# but instances of functions are pure (for now).
@@ -276,7 +272,7 @@ class UserFunction(UserExecution):
 			param_spec, body)
 
 
-@common.builtin_symbol("loop")
+@builtin_symbol("loop")
 class Loop(UserExecution):
 	# Not pure because each recur changes the loop variable bindings.
 	class Instance(ConditionalMixin, EvaluateIn, UserExecution.Instance):
@@ -342,3 +338,79 @@ class Loop(UserExecution):
 		yield
 		loop.alive = False
 		return f.result
+
+
+@builtin_symbol("by-cases")
+class ExploreIfBranches(Execution):
+	def __init__(self):
+		super().__init__(["conclusion"])
+
+	class Instance(Execution):
+		def __init__(self, conclusion):
+			super().__init__(["if_form"])
+			self.conclusion = conclusion
+
+		def evaluate(self, context, if_form):
+			# Confirm if_form is valid:
+			# 1) that the form is a list.
+			if not isinstance(if_form, List):
+				raise errors.JimmyError("Proof-by-cases must consume an if-condition.")
+			# 2) that the head of the list is the if-condition execution.
+			f = checker.push(if_form.head, context)
+			yield
+			if f.result is not common.builtin_symbols["if"]:
+				raise errors.JimmyError("Proof-by-cases must consume an if-condition.")
+			# 2.a) don't assume the head form was indempotent; avoid re-eval.
+			if_form = List([f.result, *if_form.rest])
+			# 3) that the form provides the right arguments for the if form.
+			# If fill_parameters failed, simply bubble the ArgumentMismatchError.
+			if_parts = execution.fill_parameters(
+					common.builtin_symbols["if"].parameter_spec, if_form.rest)
+
+			# All matches up; we have an if-form. Extract condition and branches.
+			condition = if_parts["condition"]
+			branch_true = if_parts["success"]
+			branch_false = if_parts["fail"]
+
+			# Evaluate condition; if known, no need to explore.
+			f = checker.push(condition, context)
+			yield
+			condition = f.result
+			if is_known(condition):
+				branch = success if objects.truthy(condition) else fail
+				# Evaluate that branch.
+				f = checker.push(branch, context)
+				yield
+				result = f.result
+				# Check conclusion.
+				yield from _check_condition(self.conclusion, context,
+						f"{bool(objects.truthy(condition))} branch failed to produce conclusion.")
+				return result
+
+			# Otherwise, evalaute true branch.
+			context = context.new_child()
+			checker.known_evaluations = checker.known_evaluations.new_child()
+			f = checker.push(branch_true, context)
+			yield
+			# Confirm branch yields conclusion.
+			yield from _check_condition(self.conclusion, context,
+					"True branch failed to produce conclusion.")
+
+			# Reset context and known_evaluations.
+			context = context.parents.new_child()
+			checker.known_evaluations = checker.known_evaluations.parents.new_child()
+			# Evaluate false branch.
+			f = checker.push(branch_false, context)
+			yield
+			# Confirm branch yields conclusion.
+			yield from _check_condition(self.conclusion, context,
+					"False branch failed to produce conclusion.")
+
+			checker.known_evaluations = checker.known_evaluations.parents
+
+			checker.assert_evaluation(self.conclusion, true)
+			return UnknownValue()
+
+	def evaluate(self, context, conclusion):
+		return self.Instance(conclusion)
+		yield

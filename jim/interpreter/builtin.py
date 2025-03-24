@@ -1,6 +1,6 @@
 import jim.evaluator.common_builtin as common
 import jim.evaluator.evaluator as evaluator
-from jim.evaluator.execution import EvaluateIn
+from jim.evaluator.execution import EvaluateIn, Macro
 import jim.evaluator.errors as errors
 from jim.objects import *
 
@@ -59,3 +59,20 @@ class Loop(common.UserExecution):
 		yield
 		loop.alive = False
 		return f.result
+
+
+@common.builtin_symbol("by-cases")
+class ExploreIfBranches(Execution):
+	def __init__(self):
+		super().__init__(["conclusion"])
+
+	class Instance(Macro):
+		def __init__(self):
+			super().__init__(["if_form"])
+		def evaluate(self, context, if_form):
+			return if_form
+			yield
+
+	def evaluate(self, context, conclusion):
+		return self.Instance()
+		yield

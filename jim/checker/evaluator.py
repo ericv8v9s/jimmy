@@ -15,7 +15,7 @@ from jim.objects import *
 # In order to track such evaluation results,
 # the just-before-call forms are used as key,
 # This is a ChainMap to allow branch exploration and backtrack.
-known_evaluations = ChainMap()  
+known_evaluations = ChainMap()
 
 
 @trace_entry
@@ -44,6 +44,17 @@ def replace_value(old, new):
 		for context in frame.context.maps:
 			for k, v in context.items():
 				context[k] = _replace_value_in_form(v)
+
+
+def mark_as_true(condition, context):
+	"""
+	Evaluates the given condition form
+	and marks its final invocation form to be true.
+	"""
+	f = push(condition, masked_context)
+	yield
+	f.result = true
+	checker.assert_evaluation(f.invocation_form, true)
 
 
 @trace_entry

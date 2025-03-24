@@ -147,9 +147,10 @@ class UnknownValue(Atom):
 	def __hash__(self):
 		return object.__hash__(self)
 	def __bool__(self):
-		# UnknownValue does not have a definite truth value.
 		# Explicitly use is_known instead.
-		assert False
+		# This exception can't be caused by user.
+		# Any occurrence indicates programming error on our part.
+		raise ValueError("UnknownValue does not have definite truth value.")
 
 def is_known(value):
 	return not isinstance(value, UnknownValue)
@@ -169,6 +170,14 @@ class List(list, Form):
 		return hash(tuple(self))
 	def __contains__(self, item):
 		return super().__contains__(item) or any(item in e for e in self.elements)
+
+	@property
+	def head(self):
+		return self[0] if len(self) > 0 else nil
+
+	@property
+	def rest(self):
+		return List(self[1:]) if len(self) > 0 else List()
 
 
 #class MutableList(List):
