@@ -1,13 +1,13 @@
 from .evaluator import evaluate
 from .builtin import builtin_symbols
 from jim import reader
-from jim.evaluator.evaluator import init_context
+from jim.evaluator.evaluator import init_evaluator
 from jim.evaluator.errors import JimmyError, format_error
 import sys
 
 
 def main(argv):
-	context = init_context(builtin_symbols)
+	context = init_evaluator(builtin_symbols)
 
 	match argv:
 		case []:  # interactive mode

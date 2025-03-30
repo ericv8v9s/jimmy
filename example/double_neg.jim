@@ -1,0 +1,7 @@
+(def notnot-elim (fn (P)
+	(precond (not (not P))
+	(postcond P
+		((by-cases P)
+			(if P
+				P
+				(and (not P) (not (not P)))))))))

@@ -37,6 +37,7 @@ stack = []
 class Stackframe:
 	def __init__(self, form, context):
 		self.form = form
+		self.target = None
 		self.context = context
 		self.result = None
 		self.invocation = self.evaluate_frame()
@@ -55,38 +56,57 @@ class Stackframe:
 		elif (result := evaluate_simple_form(self.form, self.context)) is not push:
 			self.result = result
 		else:
-			target, *args = self.form
+			yield from self.evaluate_call_form()
 
-			# Poor man's Future with generators.
-			f = push(target, self.context)
-			yield
-			target = f.result
+	def evaluate_call_form(self):
+		target, *args = self.form
 
-			if not isinstance(target, Execution):
-				raise errors.JimmyError("Invocation target is invalid.", self.form)
+		# Poor man's Future with generators.
+		f = push(target, self.context)
+		yield
+		self.target = target = f.result
 
-			if isinstance(target, jexec.EvaluateIn):
-				for i, arg in enumerate(args):
-					f = push(arg, self.context)
-					yield
-					args[i] = f.result
+		if not isinstance(target, Execution):
+			raise errors.JimmyError("Invocation target is invalid.", self.form)
 
+		if isinstance(target, jexec.EvaluateIn):
+			for i, arg in enumerate(args):
+				f = push(arg, self.context)
+				yield
+				args[i] = f.result
+
+		try:
+			matched_args = jexec.fill_parameters(target.parameter_spec, args)
+		except jexec.ArgumentMismatchError:
+			raise errors.ArgumentMismatchError(self.form) from None
+
+		target_eval = target.evaluate(self.context, **matched_args)
+		while True:
+			# Calling the execution can error either from inside the target_eval...
 			try:
-				matched_args = jexec.fill_parameters(target.parameter_spec, args)
-			except jexec.ArgumentMismatchError:
-				raise errors.ArgumentMismatchError(self.form) from None
-
-			target_eval = target.evaluate(self.context, **matched_args)
-			try:
-				while True:
-					yield next(target_eval)
+				# ... in which case we don't handle and let propagate;
+				next(target_eval)
 			except StopIteration as e:
 				self.result = e.value
+				break
 
-			if isinstance(target, jexec.EvaluateOut):
-				f = push(self.result, self.context)
-				yield
-				self.result = f.result
+			while True:
+				try:
+					# ... or from the outside via throw() on the generator,
+					# in which case we pass the exception on to the execution.
+					yield
+				except errors.JimmyError as e:
+					target_eval.throw(e)
+				else:
+					# No error.
+					# The extra loop and else is to ensure we call yield
+					# before the next next() call.
+					break
+
+		if isinstance(target, jexec.EvaluateOut):
+			f = push(self.result, self.context)
+			yield
+			self.result = f.result
 
 
 class BaseFrame(Stackframe):
@@ -110,14 +130,15 @@ def init_evaluator(builtins=None):
 
 
 def push(form, context):
-	debug(f"CALL: push({form})")
+#	debug(f"CALL: push({form})")
 	frame = Stackframe(form, context)
 	stack.append(frame)
 	return frame
 
-@trace_exit
 def pop():
-	return stack.pop().result
+	frame = stack.pop()
+	debug(f" POP: {frame}")
+	return frame.result
 
 
 def evaluate(obj, context=None):
@@ -129,19 +150,29 @@ def evaluate(obj, context=None):
 	# in the middle of evaluating an execution.
 	push(obj, context)
 
+	error = None
 	while True:
 		try:
-			next(stack[-1].invocation)
+			if error is None:
+				next(stack[-1].invocation)
+			else:
+				# If the invocation generator doesn't handle the exception,
+				# it'll be sent back to us.
+				stack[-1].invocation.throw(error)
+				error = None
 		except StopIteration:
 			ret = pop()
 			if len(stack) == zero:
 				return ret
 		except Exception as e:
-			while not isinstance(stack[-1], BaseFrame):
+			# An error happened and the last frame did not handle.
+			# Try to let the previous generators handle the exception.
+			error = e
+			if len(stack) > zero:
 				pop()
-			# Take the first one that isn't empty.
-			#raise errors.JimmyError(str(e) or repr(e) or str(type(e)), obj)
-			raise
+			else:
+				#raise errors.JimmyError(str(e) or repr(e) or str(type(e)), obj)
+				raise e
 
 
 def evaluate_simple_form(obj, context):

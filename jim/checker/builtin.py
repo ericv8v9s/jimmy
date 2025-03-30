@@ -8,8 +8,10 @@ import jim.evaluator.execution as execution
 from jim.objects import *
 import jim.objects as objects
 
+from jim.debug import debug
 
-builtin_symbols = ChainMap({}, common.builtin_symbols)
+
+builtin_symbols = common.builtin_symbols.copy()
 
 def builtin_symbol(name):
 	def reg_symbol(cls):
@@ -56,7 +58,7 @@ def any_unknown(param_spec, locals: dict):
 		return True
 	# Check the rest param. (Technically there could be more than one.)
 	for p in filter(lambda l: not isinstance(l, str) and len(l) == 1, param_spec):
-		if not all(map(objects.is_known, locals.values())):
+		if not all(map(objects.is_known, locals[p[0]])):
 			return True
 	return False
 
@@ -95,8 +97,7 @@ _delegated_symbols = {
 # Common executions that do not need to go through delegation wrapping.
 _pure_commons = {"=", "<", ">", "<=", ">=", "and", "or", "not"}
 # Implication cannot be pure (for now) because
-# by the conditional evaluation necessitated by the nature of "if",
-# the evaluation of the form depends on the context.
+# it is implemented as a Macro so it sees unresolved symbols as arguments.
 # TODO It can be pure if we make delayed argument more nuanced than "Macro".
 
 def _add_delegation(name):
@@ -116,6 +117,16 @@ for name in _pure_commons:
 
 
 ################################################################################
+
+
+@builtin_symbol("__vmap__")
+class ShowVMap(execution.Function):
+	def __init__(self):
+		super().__init__([])
+	def evaluate(self, context):
+		debug("v-map:", checker.vmap)
+		return
+		yield
 
 
 def _collect_conditions(context, progn_like, pre_or_post: bool):
@@ -209,7 +220,7 @@ def _make_truths(conditions, context, mask=None):
 	"""
 	masked_context = context if mask is None else context.new_child(mask)
 	for condition in conditions:
-		checker.mark_as_true(condition, masked_context)
+		yield from checker.mark_as_true(condition, masked_context)
 
 
 class UserExecution(common.UserExecution):
@@ -226,7 +237,9 @@ class UserExecution(common.UserExecution):
 
 @builtin_symbol("fn")
 class UserFunction(UserExecution):
-	# Function definition forms are not pure due to progn body and closure,
+	# Function definition forms are not pure due to progn body and closure
+	# (technically could be pure but too much hassle to pick apart locals
+	# and captured closures in the body),
 	# but instances of functions are pure (for now).
 	@pure
 	class Instance(ConditionalMixin, EvaluateIn, UserExecution.Instance):
@@ -249,21 +262,21 @@ class UserFunction(UserExecution):
 				self.verified = True
 				# Mask all input arguments.
 				locals = {name: UnknownValue() for name in locals}
+				masked_context = self.closure.new_child(locals)
 				# Assume the masked arguments satisfies the pre-conditions.
-				yield from _make_truths(self.pre_conditions, self.closure, locals)
+				for condition in self.pre_conditions:
+					checker.assert_evaluation(condition, true, masked_context)
 				# Evaluate body and retrieve return value.
 				# Post-conditions are checked as part of evaluation.
-				evaluation = super().evaluate(calling_context, **locals)
-				try:
-					while True:
-						yield next(evaluation)
-				except StopIteration as e:
-					result = e.value
+				f = checker.push(self.body, masked_context)
+				yield
+				result = f.result
 
 			# Successful evaluation implies post-conditions are satisfied.
 			context["*recur*"] = self
 			context["*result*"] = result
-			yield from _make_truths(self.post_conditions, context)
+			for condition in self.post_conditions:
+				checker.assert_evaluation(condition, true, context)
 			return result
 
 	def evaluate(self, context, param_spec, body):
@@ -350,6 +363,23 @@ class ExploreIfBranches(Execution):
 			super().__init__(["if_form"])
 			self.conclusion = conclusion
 
+		def explore_branch(self, context, condition, branch, assumption):
+			# Prepares temporary context and vmap.
+			context = context.new_child()
+			old_knowns = checker.vmap
+			checker.vmap = checker.vmap.new_child()
+			# Add branch assumption to vmap.
+			checker.assert_evaluation(condition, assumption, context)
+			f = checker.push(branch, context)
+			try:
+				yield
+				# Confirm branch yields conclusion.
+				yield from _check_condition(self.conclusion, context,
+						f"{bool(assumption)} branch failed to produce conclusion.")
+			finally:
+				# Drop evaluation results from the branch.
+				checker.vmap = old_knowns
+
 		def evaluate(self, context, if_form):
 			# Confirm if_form is valid:
 			# 1) that the form is a list.
@@ -358,58 +388,78 @@ class ExploreIfBranches(Execution):
 			# 2) that the head of the list is the if-condition execution.
 			f = checker.push(if_form.head, context)
 			yield
-			if f.result is not common.builtin_symbols["if"]:
+			if f.result is not builtin_symbols["if"]:
 				raise errors.JimmyError("Proof-by-cases must consume an if-condition.")
 			# 2.a) don't assume the head form was indempotent; avoid re-eval.
 			if_form = List([f.result, *if_form.rest])
 			# 3) that the form provides the right arguments for the if form.
-			# If fill_parameters failed, simply bubble the ArgumentMismatchError.
-			if_parts = execution.fill_parameters(
-					common.builtin_symbols["if"].parameter_spec, if_form.rest)
+			try:
+				if_parts = execution.fill_parameters(
+						builtin_symbols["if"].parameter_spec, if_form.rest)
+			except execution.ArgumentMismatchError:
+				raise errors.ArgumentMismatchError(if_form) from None
 
-			# All matches up; we have an if-form. Extract condition and branches.
+			# All matched up; we have an if-form. Extract condition and branches.
 			condition = if_parts["condition"]
 			branch_true = if_parts["success"]
 			branch_false = if_parts["fail"]
 
-			# Evaluate condition; if known, no need to explore.
+			# Evaluate condition.
 			f = checker.push(condition, context)
 			yield
-			condition = f.result
-			if is_known(condition):
-				branch = success if objects.truthy(condition) else fail
-				# Evaluate that branch.
-				f = checker.push(branch, context)
-				yield
-				result = f.result
-				# Check conclusion.
-				yield from _check_condition(self.conclusion, context,
-						f"{bool(objects.truthy(condition))} branch failed to produce conclusion.")
-				return result
 
-			# Otherwise, evalaute true branch.
-			context = context.new_child()
-			checker.known_evaluations = checker.known_evaluations.new_child()
-			f = checker.push(branch_true, context)
+			# If condition is unknown, explore branches to find which case
+			# the condition must be in based on contradictions.
+			if not objects.is_known(f.result):
+				branch_true_contrd = branch_false_contrd = false
+
+				# Evalaute true branch.
+				try:
+					yield from self.explore_branch(context, condition, branch_true, true)
+				except errors.ContradictionError:
+					debug("Contradiction found in true branch.")
+					branch_true_contrd = true
+
+				# Evaluate false branch.
+				try:
+					yield from self.explore_branch(context, condition, branch_false, false)
+				except errors.ContradictionError:
+					debug("Contradiction found in false branch.")
+					branch_false_contrd = true
+
+				# If both branches gave contradictions,
+				# then the condition is both true and false.
+				if branch_true_contrd and branch_false_contrd:
+					raise errors.ContradictionError(condition, true, false)
+				# If only one branch produced a contradiction,
+				# then the condition must be in the other case.
+				if branch_true_contrd or branch_false_contrd:
+					# If there was a contradiction in the true branch,
+					# we want the false branch, and branch_false_contrd
+					# is also false in that case; vice versa.
+					assumption = branch_false_contrd
+				# Otherwise, no contradiction in either branch,
+				# and both cases satisfied the conclusion.
+				else:
+					checker.assert_evaluation(self.conclusion, true, context)
+					return UnknownValue()
+
+			else:  # Condition is known.
+				if not isinstance(f.result, Bool):
+					raise ValueError(f.result, "Value must be either true or false.")
+				assumption = f.result
+
+			# The previous lengthy if-statement has now found the branch
+			# the condition would have picked. Evaluate that branch.
+			branch = branch_true if assumption else branch_false
+			checker.assert_evaluation(condition, assumption, context)
+			f = checker.push(branch, context)
 			yield
-			# Confirm branch yields conclusion.
+			result = f.result
+			# Check conclusion.
 			yield from _check_condition(self.conclusion, context,
-					"True branch failed to produce conclusion.")
-
-			# Reset context and known_evaluations.
-			context = context.parents.new_child()
-			checker.known_evaluations = checker.known_evaluations.parents.new_child()
-			# Evaluate false branch.
-			f = checker.push(branch_false, context)
-			yield
-			# Confirm branch yields conclusion.
-			yield from _check_condition(self.conclusion, context,
-					"False branch failed to produce conclusion.")
-
-			checker.known_evaluations = checker.known_evaluations.parents
-
-			checker.assert_evaluation(self.conclusion, true)
-			return UnknownValue()
+					f"{bool(condition)} branch failed to produce conclusion.")
+			return result
 
 	def evaluate(self, context, conclusion):
 		return self.Instance(conclusion)

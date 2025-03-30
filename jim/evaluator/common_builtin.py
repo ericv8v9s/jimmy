@@ -46,6 +46,7 @@ def _product(values):  # just like the builtin sum
 	return reduce(ops.mul, values, 1)
 
 
+# TODO unused; remove?
 def _flatten(coll):
 	def combine(result, next):
 		if isinstance(next, list):
