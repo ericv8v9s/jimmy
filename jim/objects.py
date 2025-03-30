@@ -51,7 +51,10 @@ class _Nil(Atom):
 nil = _Nil()
 
 
-class _True(Atom):
+class Bool(Atom):
+	pass
+
+class _True(Bool):
 	"""Special singleton true object."""
 	def __init__(self):
 		super().__init__(True)
@@ -63,8 +66,7 @@ class _True(Atom):
 		return True
 true = _True()
 
-
-class _False(Atom):
+class _False(Bool):
 	"""Special singleton false object."""
 	def __init__(self):
 		super().__init__(False)
@@ -77,16 +79,11 @@ class _False(Atom):
 false = _False()
 
 
-def truthy(v):
-	if isinstance(v, UnknownValue):
-		return v
-	return wrap_bool(not (v is nil or v is false))
-
 def wrap_bool(b):
 	return true if b else false
 
 def known_and_true(v):
-	return is_known(v) and truthy(v)
+	return is_known(v) and v is true
 
 
 class Integer(Atom):
@@ -262,7 +259,7 @@ def is_mutable(form):
 __all__ = [
 	*(cls.__name__ for cls in [
 		LanguageObject, Form,
-		Atom, Integer, Symbol, String, Execution, UnknownValue,
+		Atom, Bool, Integer, Symbol, String, Execution, UnknownValue,
 		List, #MutableList,
 		Comment]),
 	"nil", "true", "false"]

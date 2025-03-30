@@ -7,7 +7,7 @@ class JimmyError(Exception):
 		self.stackframes = list(evaluator.stack)
 		self.msg = msg
 		if offending_form is None:
-			offending_form = self.stackframes[-1].invocation_form
+			offending_form = self.stackframes[-1].form
 		self.offending_form = offending_form
 
 class UndefinedVariableError(JimmyError):
@@ -17,6 +17,10 @@ class UndefinedVariableError(JimmyError):
 class DivideByZeroError(JimmyError):
 	def __init__(self, msg="Cannot divide by zero."):
 		super().__init__(msg)
+
+class ValueError(JimmyError):
+	def __init__(self, offending_form, msg):
+		super().__init__(msg, offending_form)
 
 class ArgumentMismatchError(JimmyError):
 	def __init__(self, offending_form, msg="Arguments do not match the parameters."):
@@ -40,8 +44,11 @@ class LoadError(JimmyError):
 
 
 def format_error(e):
+	frames = enumerate(e.stackframes)
+	next(frames)  # Skips the BaseFrame.
+
 	result = "Traceback:\n"
-	for i, f in enumerate(e.stackframes):
+	for i, f in frames:
 		result += f"  {i}: {f.form!r}\n"
 
 	result += (

@@ -3,7 +3,7 @@ import operator as ops
 from itertools import pairwise, filterfalse, starmap
 
 from jim.objects import *
-import jim.objects as objects  # is_mutable, truthy, wrap_bool
+import jim.objects as objects  # is_mutable, wrap_bool
 from jim.evaluator.execution import Function, Macro
 import jim.evaluator.errors as errors
 from jim.evaluator.evaluator import push, evaluate
@@ -32,8 +32,14 @@ def wrap_progn(forms):
 
 def _unwrap_int(form: Integer) -> int:
 	if not isinstance(form, Integer):
-		raise errors.JimmyError("Value is not an integer.", form)
+		raise errors.ValueError(form, "Value is not an integer.")
 	return form.value
+
+
+def _check_bool(v):
+	if v is true or v is false:
+		return v
+	raise errors.ValueError(v, "Value must be either true or false.")
 
 
 def _product(values):  # just like the builtin sum
@@ -78,7 +84,7 @@ def Assertion(expr):
 
 
 @builtin_symbol("number?")
-@function_execution("value")
+@function_execution("value", conversion=objects.wrap_bool)
 def NumberTest(value):
 	return isinstance(value, Integer)
 
@@ -407,7 +413,7 @@ def GreaterEqual(a, b, more):
 def Conjunction(terms):
 	# True only if all terms are true, so unknown if any term is unknown.
 	if all(map(objects.is_known, terms)):
-		return objects.wrap_bool(all(map(objects.truthy, terms)))
+		return objects.wrap_bool(all(map(_check_bool, terms)))
 	return UnknownValue()
 
 
@@ -418,7 +424,7 @@ def Conjunction(terms):
 @builtin_symbol("or")
 @function_execution(["terms"])
 def Disjunction(terms):
-	# Return the first truthy value.
+	# Return the first true value.
 	for t in terms:
 		if objects.known_and_true(t):
 			return t
@@ -433,7 +439,7 @@ def Disjunction(terms):
 @function_execution("p")
 def Negation(p):
 	if objects.is_known(p):
-		return objects.wrap_bool(not objects.truthy(p))
+		return objects.wrap_bool(not _check_bool(p))
 	return UnknownValue()
 
 
@@ -444,9 +450,8 @@ class IfCondition(Macro):
 	def evaluate(self, context, condition, success, fail):
 		f = push(condition, context)
 		yield
-		condition = f.result
-		if is_known(condition):
-			return success if objects.truthy(condition) else fail
+		if objects.is_known(f.result):
+			return success if _check_bool(f.result) else fail
 		return UnknownValue()
 
 

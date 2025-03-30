@@ -32,72 +32,81 @@ class NilContext:
 	def copy(self):
 		return self
 
-def init_context(builtins=None):
-	if builtins is None:
-		from jim.evaluator.common_builtin import builtin_symbols
-		builtins = builtin_symbols
-	return DeepCopyChainMap(builtins.copy(), NilContext())
-
-
 stack = []
 
 class Stackframe:
 	def __init__(self, form, context):
 		self.form = form
-		self.invocation_form = form
 		self.context = context
 		self.result = None
-		self.invocation = evaluate_frame(self)
+		self.invocation = self.evaluate_frame()
 
 	def __repr__(self):
 		return f"<{self.form}, {self.result}>"
 
+	def evaluate_frame(self):
+		"""
+		Returns a generator which evaluates the form on the given stackframe,
+		yielding whenever another stackframe is pushed on top.
+		The result of the call is stored in the result field of the given frame.
+		"""
+		if isinstance(self.form, Symbol):
+			self.result = self.context[self.form.value]
+		elif (result := evaluate_simple_form(self.form, self.context)) is not push:
+			self.result = result
+		else:
+			target, *args = self.form
 
-def evaluate_frame(stackframe):
-	"""
-	Returns a generator which evaluates the form on the given stackframe,
-	yielding whenever another stackframe is pushed on top.
-	The result of the call is stored in the result field of the given frame.
-	"""
-	result = evaluate_simple_form(stackframe.form, stackframe.context)
-	if result is not push:
-		stackframe.result = result
-		return
-
-	target, *args = stackframe.form
-
-	# Poor man's Future with generators.
-	f = push(target, stackframe.context)
-	yield
-	target = f.result
-
-	if not isinstance(target, Execution):
-		raise errors.JimmyError("Invocation target is invalid.", stackframe.form)
-
-	if isinstance(target, jexec.EvaluateIn):
-		for i, arg in enumerate(args):
-			f = push(arg, stackframe.context)
+			# Poor man's Future with generators.
+			f = push(target, self.context)
 			yield
-			args[i] = f.result
+			target = f.result
 
-	stackframe.invocation_form = List([target, *args])
+			if not isinstance(target, Execution):
+				raise errors.JimmyError("Invocation target is invalid.", self.form)
 
-	try:
-		matched_args = jexec.fill_parameters(target.parameter_spec, args)
-	except jexec.ArgumentMismatchError:
-		raise errors.ArgumentMismatchError(stackframe.form) from None
+			if isinstance(target, jexec.EvaluateIn):
+				for i, arg in enumerate(args):
+					f = push(arg, self.context)
+					yield
+					args[i] = f.result
 
-	target_eval = target.evaluate(stackframe.context, **matched_args)
-	try:
-		while True:
-			yield next(target_eval)
-	except StopIteration as e:
-		stackframe.result = e.value
+			try:
+				matched_args = jexec.fill_parameters(target.parameter_spec, args)
+			except jexec.ArgumentMismatchError:
+				raise errors.ArgumentMismatchError(self.form) from None
 
-	if isinstance(target, jexec.EvaluateOut):
-		f = push(stackframe.result, stackframe.context)
+			target_eval = target.evaluate(self.context, **matched_args)
+			try:
+				while True:
+					yield next(target_eval)
+			except StopIteration as e:
+				self.result = e.value
+
+			if isinstance(target, jexec.EvaluateOut):
+				f = push(self.result, self.context)
+				yield
+				self.result = f.result
+
+
+class BaseFrame(Stackframe):
+	def __init__(self, initial_context):
+		super().__init__(nil, initial_context)
+	def __repr__(self):
+		return "base frame"
+	def evaluate_frame(self):
+		return
 		yield
-		stackframe.result = f.result
+
+
+def init_evaluator(builtins=None):
+	if builtins is None:
+		from jim.evaluator.common_builtin import builtin_symbols
+		builtins = builtin_symbols
+	context = DeepCopyChainMap(builtins.copy(), NilContext())
+	# Push a dummy frame to initialize the context.
+	# Calling evaluate without a context will use the context of the last frame.
+	stack.append(BaseFrame(context))
 
 
 def push(form, context):
@@ -111,7 +120,10 @@ def pop():
 	return stack.pop().result
 
 
-def evaluate(obj, context):
+def evaluate(obj, context=None):
+	if context is None:
+		context = stack[-1].context
+
 	zero = len(stack)
 	# Because we can also call this with a non-empty initial stack
 	# in the middle of evaluating an execution.
@@ -125,7 +137,7 @@ def evaluate(obj, context):
 			if len(stack) == zero:
 				return ret
 		except Exception as e:
-			while len(stack) > 0:
+			while not isinstance(stack[-1], BaseFrame):
 				pop()
 			# Take the first one that isn't empty.
 			#raise errors.JimmyError(str(e) or repr(e) or str(type(e)), obj)
@@ -134,10 +146,6 @@ def evaluate(obj, context):
 
 def evaluate_simple_form(obj, context):
 	match obj:
-		case Symbol(value=name):
-			return context[name]
-
-		# Other atoms are self-evaluating objects.
 		case Atom():
 			return obj
 
