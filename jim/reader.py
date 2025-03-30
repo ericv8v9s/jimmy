@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from jim.objects import *
+import jim.objects as objects
 
 
 _SPACES = set(whitespace)
@@ -117,15 +118,13 @@ def parse(chars):
 	return parse_form(chars).result
 
 
-def load_forms(get_next_char):
+def load_forms(get_next_char, comments=False):
 	chars = wrap_char_source(get_next_char)
 	while True:
 		form = parse(chars)
 		if form is None:
 			break
-		if isinstance(form, Comment):
-			continue
-		yield form
+		yield objects.filter_tree(lambda f: not isinstance(f, Comment), form)
 
 
 @_component_parser

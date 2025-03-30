@@ -186,6 +186,8 @@ class Comment(_ValueMixin, LanguageObject):
 	def __init__(self, content):
 		super().__init__(value=content)
 	def __str__(self):
+		return ""
+	def __repr__(self):
 		return ";" + self.value + "\\n"
 
 
@@ -197,15 +199,15 @@ def is_leaf(node):
 		return True
 
 
-def filter_tree(tree, criteria):
+def filter_tree(criterion, tree):
 	"""
-	Filter for nodes meeting the criteria.
+	Filter for nodes meeting the criterion.
 	The tree must take the form of nested iterables,
 	where iterables are internal nodes, or otherwise considered a leaf.
 	Tree nodes are not mutated: the modified tree are rebuilt bottom up.
 	To do so, all non-leaf nodes must allow construction by passing an
 	iterable of children.
-	If the root fails the criteria, None is returned.
+	If the root fails the criterion, None is returned.
 	"""
 
 	_REMOVED = object()
@@ -214,7 +216,7 @@ def filter_tree(tree, criteria):
 		return x is not _REMOVED
 
 	def _filter_tree(tree):
-		if not criteria(tree):
+		if not criterion(tree):
 			return _REMOVED
 		if is_leaf(tree):
 			return tree
