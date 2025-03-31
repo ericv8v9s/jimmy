@@ -124,9 +124,30 @@ class ShowVMap(execution.Function):
 	def __init__(self):
 		super().__init__([])
 	def evaluate(self, context):
-		debug("v-map:", checker.vmap)
+		print("v-map:", checker.vmap)
 		return
 		yield
+
+
+@builtin_symbol("assert")
+class Assertion(Execution):
+	def __init__(self):
+		super().__init__(["assertion", ["value", true]])
+	def evaluate(self, context, assertion, value):
+		yield from checker.assert_evaluate(assertion, value, context)
+		return nil
+
+
+@builtin_symbol("obtain")
+class Reiteration(Execution):
+	def __init__(self):
+		super().__init__(["conclusion", ["value", true]])
+	def evaluate(self, context, conclusion, value):
+		f = checker.push(conclusion)
+		yield
+		if not value.equal(f.result.equal):
+			raise errors.AssertionError(conclusion)
+		return nil
 
 
 def _collect_conditions(context, progn_like, pre_or_post: bool):
@@ -150,6 +171,10 @@ def _collect_conditions(context, progn_like, pre_or_post: bool):
 	# If the head is too complex, we are not going to bother.
 	if not isinstance(head, Symbol):
 		return []
+
+	if head.value == "*result*":
+		raise errors.JimmyError("Cannot use result as execution in post-conditions.")
+		# Because we can't determine if that *result* is a pure function.
 
 	head = checker.evaluate(head, context)
 	bs = builtin_symbols  # Basically an alias so we can type less.
@@ -188,7 +213,7 @@ def _collect_conditions(context, progn_like, pre_or_post: bool):
 		if head is bs["invar"] or head is bs["postcond"]:
 			return conditions + [condition]
 
-	return []
+	return conditions
 
 
 class ConditionalMixin:
@@ -253,6 +278,7 @@ class UserFunction(UserExecution):
 
 		def evaluate(self, calling_context, **locals):
 			# Check pre-conditions on actual arguments.
+			debug("fn check pre-conditions:", self.pre_conditions)
 			context = self.closure.new_child(locals)
 			yield from self.check_preconds(context)
 
@@ -264,8 +290,9 @@ class UserFunction(UserExecution):
 				locals = {name: UnknownValue() for name in locals}
 				masked_context = self.closure.new_child(locals)
 				# Assume the masked arguments satisfies the pre-conditions.
+				debug("fn preparing pre-conditions for body:", self.pre_conditions)
 				for condition in self.pre_conditions:
-					checker.assert_evaluation(condition, true, masked_context)
+					yield from checker.assert_evaluate(condition, true, masked_context)
 				# Evaluate body and retrieve return value.
 				# Post-conditions are checked as part of evaluation.
 				f = checker.push(self.body, masked_context)
@@ -275,8 +302,9 @@ class UserFunction(UserExecution):
 			# Successful evaluation implies post-conditions are satisfied.
 			context["*recur*"] = self
 			context["*result*"] = result
+			debug("fn sending post-conditions out:", self.post_conditions)
 			for condition in self.post_conditions:
-				checker.assert_evaluation(condition, true, context)
+				yield from checker.assert_evaluate(condition, true, context)
 			return result
 
 	def evaluate(self, context, param_spec, body):
@@ -292,12 +320,12 @@ class Loop(UserExecution):
 		def __init__(self, names, body, closure):
 			# loop needs parameterized postcond.
 			closure = closure.new_child(
-				{"postcond": common.ParameterizedPostCondition(names)})
+					{"postcond": common.ParameterizedPostCondition(names)})
 			preconds = _collect_conditions(closure, body, True)
 			postconds = _collect_conditions(
-				closure.new_child({"*recur*": self}), body, False)
-			super().__init__(names,body, closure,
-				pre_conditions=preconds, post_conditions=postconds)
+					closure.new_child({"*recur*": self}), body, False)
+			super().__init__(names, body, closure,
+					pre_conditions=preconds, post_conditions=postconds)
 			self.alive = True
 
 		def evaluate(self, calling_context, **locals):
@@ -307,17 +335,19 @@ class Loop(UserExecution):
 			# Check pre-conditions on actual arguments.
 			yield from self.check_preconds(self.closure.new_child(locals))
 
-			# Mask all input arguments.
-			masked_locals = {name: UnknownValue() for name in locals}
-			body_context = self.closure.new_child(masked_locals)
-			body_context["*recur*"] = self
-
 			if self.verified:
 				result = UnknownValue()
 			else:
 				self.verified = True
+
+				# Mask all input arguments.
+				locals = {name: UnknownValue() for name in locals}
+				body_context = self.closure.new_child(locals)
+				body_context["*recur*"] = self
+
 				# Assume the masked arguments satisfies the pre-conditions.
-				yield from _make_truths(self.pre_conditions, self.closure, masked_locals)
+				for condition in self.pre_conditions:
+					yield from checker.assert_evaluate(condition, true, body_context)
 				# Evaluate body and retrieve return value.
 				# Post-conditions are checked as part of evaluation.
 				# *result* is available to postcond as postcond handles it internally.
@@ -326,11 +356,15 @@ class Loop(UserExecution):
 				result = f.result
 
 			# Successful evaluation implies post-conditions are satisfied.
+			# ParameterizedPostCondition also handles this part itself,
+			# but we need to bring the loop variables back again for assert_evaluate.
+			# Unlike for fn, we need to send these bindings to the calling_context,
+			# so we can't make a new_child for these names.
 			for name in self.parameter_spec:
 				calling_context[name] = body_context[name]
-			# But *result* needs to be explicit here.
-			yield from _make_truths(self.post_conditions, calling_context.new_child(
-					{"*result*": result, "*recur*": self}))
+			context = calling_context.new_child({"*result*": result, "*recur*": self})
+			for condition in self.post_conditions:
+				yield from checker.assert_evaluate(condition, true, context)
 
 			return result
 
@@ -369,9 +403,9 @@ class ExploreIfBranches(Execution):
 			old_knowns = checker.vmap
 			checker.vmap = checker.vmap.new_child()
 			# Add branch assumption to vmap.
-			checker.assert_evaluation(condition, assumption, context)
-			f = checker.push(branch, context)
 			try:
+				yield from checker.assert_evaluate(condition, assumption, context)
+				f = checker.push(branch, context)
 				yield
 				# Confirm branch yields conclusion.
 				yield from _check_condition(self.conclusion, context,
@@ -441,7 +475,7 @@ class ExploreIfBranches(Execution):
 				# Otherwise, no contradiction in either branch,
 				# and both cases satisfied the conclusion.
 				else:
-					checker.assert_evaluation(self.conclusion, true, context)
+					yield from checker.assert_evaluate(self.conclusion, true, context)
 					return UnknownValue()
 
 			else:  # Condition is known.
@@ -452,13 +486,14 @@ class ExploreIfBranches(Execution):
 			# The previous lengthy if-statement has now found the branch
 			# the condition would have picked. Evaluate that branch.
 			branch = branch_true if assumption else branch_false
-			checker.assert_evaluation(condition, assumption, context)
+			yield from checker.assert_evaluate(condition, assumption, context)
 			f = checker.push(branch, context)
 			yield
 			result = f.result
 			# Check conclusion.
 			yield from _check_condition(self.conclusion, context,
 					f"{bool(condition)} branch failed to produce conclusion.")
+			yield from checker.assert_evaluate(self.conclusion, true, context)
 			return result
 
 	def evaluate(self, context, conclusion):

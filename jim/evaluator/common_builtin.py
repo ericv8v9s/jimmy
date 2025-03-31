@@ -77,10 +77,10 @@ def function_execution(*param_spec, conversion=lambda x: x, allow_unknown=False)
 
 
 @builtin_symbol("assert")
-@function_execution("expr")
-def Assertion(expr):
-	if not objects.known_and_true(expr):
-		raise errors.AssertionError(expr)
+@function_execution("assertion", ["value", true])
+def Assertion(assertion, value):
+	if not Form.equal(assertion, value):
+		raise errors.AssertionError(assertion)
 	return nil
 
 
@@ -339,7 +339,6 @@ def Modulo(x, y):
 def check_transitive_property(bipred, terms):
 	# This checks the following, assuming bipred is transitive:
 	# for all t_i, t_j in terms, if i < j, then bipred(t_i, t_j).
-
 	terms = list(terms)
 	if len(terms) <= 1:
 		return true  # Vacuously true.
@@ -383,28 +382,32 @@ def Equality(a, b, more):
 	return true
 
 
+def _unwrap_op(op, unwrap=lambda x: x):
+	return lambda a, b: op(unwrap(a), unwrap(b))
+
+
 @builtin_symbol("<")
 @function_execution("a", "b", ["more"])
 def LessThan(a, b, more):
-	return check_transitive_property(ops.lt, map(_unwrap_int, [a, b, *more]))
+	return check_transitive_property(_unwrap_op(ops.lt, _unwrap_int), [a, b, *more])
 
 
 @builtin_symbol(">")
 @function_execution("a", "b", ["more"])
 def GreaterThan(a, b, more):
-	return check_transitive_property(ops.gt, map(_unwrap_int, [a, b, *more]))
+	return check_transitive_property(_unwrap_op(ops.gt, _unwrap_int), [a, b, *more])
 
 
 @builtin_symbol("<=")
 @function_execution("a", "b", ["more"])
 def LessEqual(a, b, more):
-	return check_transitive_property(ops.le, map(_unwrap_int, [a, b, *more]))
+	return check_transitive_property(_unwrap_op(ops.le, _unwrap_int), [a, b, *more])
 
 
 @builtin_symbol(">=")
 @function_execution("a", "b", ["more"])
 def GreaterEqual(a, b, more):
-	return check_transitive_property(ops.ge, map(_unwrap_int, [a, b, *more]))
+	return check_transitive_property(_unwrap_op(ops.ge, _unwrap_int), [a, b, *more])
 
 
 # Empty conjunction is vacuously true.

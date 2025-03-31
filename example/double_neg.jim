@@ -5,3 +5,7 @@
 			(if P
 				P
 				(and (not P) (not (not P)))))))))
+
+(def q)
+(assert (not (not q)))
+(notnot-elim q)

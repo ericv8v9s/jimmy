@@ -13,22 +13,30 @@ from jim.objects import *
 class Stackframe(evaluator.Stackframe):
 	@trace_entry
 	def evaluate_frame(self):
-		# Evaluate using the context as usual, then try to update v-map.
+		# If a value is present before we start, we are given an assumption.
+		# That value is to be added to v-map and will take precedence
+		# if our evaluation produced an unknown.
+		expected_value = self.result
+
 		if isinstance(self.form, Symbol):
-			self.result = self.context[self.form.value]
-			# Trivial case, but we do want to check for immediately contradicting
-			# assumptions on the symbols.
-			assert_evaluation(self.form, self.result, self.context)
+			is_call_form = False
+			self.result = self.immediate_form = self.context[self.form.value]
 		elif (result := evaluate_simple_form(self.form, self.context)) is not push:
-			self.result = result
+			is_call_form = False
+			self.result = self.immediate_form = result
 		else:
+			is_call_form = True
 			yield from self.evaluate_call_form()
+
+		if is_call_form:
+			if builtin.is_pure_function(self.immediate_form.head):
+				update_vmap(self.form, self.result, self.context)
+				update_vmap(self.immediate_form, self.result)
+
+		if expected_value is not None:
+			update_vmap(self.form, expected_value, self.context)
 		self.result = vmap.get(resolve_form(self.form, self.context), self.result)
 
-	def evaluate_call_form(self):
-		yield from super().evaluate_call_form()
-		if builtin.is_pure_function(self.target):
-			assert_evaluation(self.form, self.result, self.context)
 
 # Inject our version of evaluate_frame.
 evaluator.Stackframe = Stackframe
@@ -77,14 +85,14 @@ def resolve_form(form, context):
 				return List([target, *args])
 
 
-def assert_evaluation(form, value, context=None):
+def update_vmap(form, value, context=None):
 	"""
 	Asserts that the form evaluates to the given value and adds it to v-map
 	if it is concrete while the previous value is unknown.
 	If the form already has a known value,
 	then the new value must equal to that value.
 	"""
-	debug(f"CALL: assert_evaluation({form}, {value})")
+	debug(f"CALL: update_vmap({form}, {value})")
 	# Assume the provided form to be resolved if no context was given.
 	resolved_form = resolve_form(form, context) if context is not None else form
 	if resolved_form is None:
@@ -110,10 +118,9 @@ def assert_evaluation(form, value, context=None):
 		_replace_value(unknown, known)
 		return unknown
 
-	# Neither is known; just replacing an unknown with another unknown.
+	# Neither is known; prefer to keep the previous unknown.
 	elif not is_old_known and not is_new_known:
-		_replace_value(old, new)
-		return old
+		return new
 
 	# Both is known.
 	else:
@@ -145,6 +152,20 @@ def _replace_value(old, new):
 #(neg a)  ; (= 0 (+ a (- a)))
 #(obtain (= (+ c (- a)) b))
 
+
+@trace_entry
+def assert_evaluate(form, value, context):
+	"""
+	Pushes to evaluate the form, mapping the form and its immediate form
+	to value in v-map. The result of the evaluation must be unknown
+	or equal to the given value.
+	"""
+	f = push(form, context)
+	f.result = value
+	yield
+	return f.result
+
+
 def evaluate(obj, context=None):
 	return evaluator.evaluate(obj, context)
 
@@ -164,8 +185,8 @@ def evaluate(obj, context=None):
 #		"""
 #		return self.maps[0].vmap
 #
-#	def assert_evaluation(self, form, value):
-#		self.maps[0].assert_evaluation(form, value)
+#	def update_vmap(self, form, value):
+#		self.maps[0].update_vmap(form, value)
 #		# TODO When we find a new value for the form (and wasn't a contradiction),
 #		# we should update that old value present in the context to the new value.
 #

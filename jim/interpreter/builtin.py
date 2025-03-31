@@ -76,3 +76,7 @@ class ExploreIfBranches(Execution):
 	def evaluate(self, context, conclusion):
 		return self.Instance()
 		yield
+
+
+# In the context of the interpreter, obtain is the same as assert.
+common.builtin_symbol("obtain")(common.Assertion)

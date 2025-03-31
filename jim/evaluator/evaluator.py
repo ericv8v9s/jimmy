@@ -37,7 +37,9 @@ stack = []
 class Stackframe:
 	def __init__(self, form, context):
 		self.form = form
-		self.target = None
+		# We intentionally leave this undefined until when the value is available
+		# so that an untimely reference errors indicating a programming error.
+		#self.immediate_form = None
 		self.context = context
 		self.result = None
 		self.invocation = self.evaluate_frame()
@@ -52,9 +54,9 @@ class Stackframe:
 		The result of the call is stored in the result field of the given frame.
 		"""
 		if isinstance(self.form, Symbol):
-			self.result = self.context[self.form.value]
+			self.result = self.immediate_form = self.context[self.form.value]
 		elif (result := evaluate_simple_form(self.form, self.context)) is not push:
-			self.result = result
+			self.result = self.immediate_form = result
 		else:
 			yield from self.evaluate_call_form()
 
@@ -64,7 +66,7 @@ class Stackframe:
 		# Poor man's Future with generators.
 		f = push(target, self.context)
 		yield
-		self.target = target = f.result
+		target = f.result
 
 		if not isinstance(target, Execution):
 			raise errors.JimmyError("Invocation target is invalid.", self.form)
@@ -79,6 +81,12 @@ class Stackframe:
 			matched_args = jexec.fill_parameters(target.parameter_spec, args)
 		except jexec.ArgumentMismatchError:
 			raise errors.ArgumentMismatchError(self.form) from None
+
+		# We need this so that the same calls expressed as different forms
+		# for arguments can be identified to be the same in the v-map.
+		# But this can not be the only mechanism,
+		# as it only functions when we don't have a contradiction.
+		self.immediate_form = List([target, *args])
 
 		target_eval = target.evaluate(self.context, **matched_args)
 		while True:
