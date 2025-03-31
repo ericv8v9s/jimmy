@@ -9,3 +9,4 @@
 (def q)
 (assert (not (not q)))
 (notnot-elim q)
+(obtain q)

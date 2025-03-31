@@ -1,0 +1,8 @@
+(let (N 10 i 0)
+	(loop (i)
+		(postcond (not (<= i N))
+		((by-cases (not (<= i N)))
+			(if (<= i N)
+				(progn (*recur* (+ i 1)) (__vmap__))
+				i))))
+	(obtain (not (<= i N))))

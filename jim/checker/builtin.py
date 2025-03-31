@@ -143,9 +143,9 @@ class Reiteration(Execution):
 	def __init__(self):
 		super().__init__(["conclusion", ["value", true]])
 	def evaluate(self, context, conclusion, value):
-		f = checker.push(conclusion)
+		f = checker.push(conclusion, context)
 		yield
-		if not value.equal(f.result.equal):
+		if not value.equal(f.result):
 			raise errors.AssertionError(conclusion)
 		return nil
 
@@ -210,7 +210,7 @@ def _collect_conditions(context, progn_like, pre_or_post: bool):
 			return [condition] + conditions
 	else:
 		# Only want post-conditions.
-		if head is bs["invar"] or head is bs["postcond"]:
+		if head is bs["invar"] or isinstance(head, common.ParameterizedPostCondition):
 			return conditions + [condition]
 
 	return conditions
@@ -337,6 +337,9 @@ class Loop(UserExecution):
 
 			if self.verified:
 				result = UnknownValue()
+				for name in self.parameter_spec:
+					calling_context[name] = UnknownValue()
+
 			else:
 				self.verified = True
 
@@ -355,13 +358,14 @@ class Loop(UserExecution):
 				yield
 				result = f.result
 
-			# Successful evaluation implies post-conditions are satisfied.
-			# ParameterizedPostCondition also handles this part itself,
-			# but we need to bring the loop variables back again for assert_evaluate.
-			# Unlike for fn, we need to send these bindings to the calling_context,
-			# so we can't make a new_child for these names.
-			for name in self.parameter_spec:
-				calling_context[name] = body_context[name]
+				# Successful evaluation implies post-conditions are satisfied.
+				# ParameterizedPostCondition also handles this part itself,
+				# but we need to bring the loop variables back again for assert_evaluate.
+				# Unlike for fn, we need to send these bindings to the calling_context,
+				# so we can't make a new_child for these names.
+				for name in self.parameter_spec:
+					calling_context[name] = body_context[name]
+
 			context = calling_context.new_child({"*result*": result, "*recur*": self})
 			for condition in self.post_conditions:
 				yield from checker.assert_evaluate(condition, true, context)
