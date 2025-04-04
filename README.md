@@ -18,31 +18,6 @@ latter of which noted that:
 > interest of academic respectability, but a serious recommendation for
 > the reduction of the costs associated with programming error.
 
-Yet, despite continued academic research and the explosion of commercial
-software complexity, formal methods are still sparsely employed in
-practice. As Edgar and Alexei Serna concluded in their literature
-review:
-
-> [Formal methods] seem well developed and are supported by a large
-> number of applications, users and important critical developments;
-> however, as a limitation, they have ceased to be a major component in
-> computer science and engineering training, few professors are working
-> on them, course offerings at the undergraduate and graduate levels are
-> scarce, they are difficult to apply in important projects, and only a
-> small number of graduates welcome them as a source of work.
-
-This limited project does not hope to produce a meaningful impact to the
-grand technical and social challenge. Instead, it is aimed at the lesser
-goal of gaining familiarity with existing theories and software relevant
-to the field such that a foundation could be built for future work.
-
-
-This project has the following objectives:
-
-[x] Design and implement a simple language.
-[x] Build a proof system.
-[x] Implement an algorithm in the new language and prove its correctness.
-[ ] Extending the language to implement procedures.
-[ ] Extending the proof checker to support proofs about procedure calls.
-[ ] Rewrite the proof system in the new language.
-[ ] Prove the correctness of the proof system.
+This project implements a method of proving program correctness
+up to certain desired properties by evaluating with placeholder values
+and tracking properties between such values.
