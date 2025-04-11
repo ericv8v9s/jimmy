@@ -365,19 +365,18 @@ def Equality(a, b, more):
 	unknowns = list(filterfalse(objects.is_known, terms))
 
 	# First check all the known values.
-	if not check_transitive_property(Form.equal, knowns):
-		# Safe cast because checking knowns could not yield an UnknownValue.
+	if not all(starmap(Form.equal, pairwise(knowns))):
 		return false
 
 	# The known values are equal. Do we have any unknowns?
 	if len(unknowns) != 0:
 		if len(knowns) == 0:
 			# All unknowns and no known values.
-			# true if all terms are the same unknown.
-			return objects.wrap_bool(all(starmap(Form.equal, pairwise(terms))))
-		else:
-			# Mix of knowns and unknowns.
-			return UnknownValue()
+			# true if all unknowns are the same unknown.
+			if all(starmap(Form.equal, pairwise(unknowns))):
+				return true
+		# Mix of knowns and/or different unknowns.
+		return UnknownValue()
 	# No unknowns.
 	return true
 
