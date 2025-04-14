@@ -222,7 +222,7 @@ class PreCondition(Macro):
 class ParameterizedPostCondition(Execution):
 	def __init__(self, variables):
 		super().__init__(["condition", ["forms"]])
-		# These names are make available to the post-condition.
+		# These names are made available to the post-condition.
 		self.variables = variables
 
 	def evaluate(self, context, condition, forms):

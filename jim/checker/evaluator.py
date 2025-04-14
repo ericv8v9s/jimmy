@@ -118,9 +118,9 @@ def update_vmap(form, value, context=None):
 		_replace_value(unknown, known)
 		return unknown
 
-	# Neither is known; prefer to keep the previous unknown.
+	# Neither is known; prefer old value.
 	elif not is_old_known and not is_new_known:
-		return new
+		return old
 
 	# Both is known.
 	else:
@@ -168,57 +168,3 @@ def assert_evaluate(form, value, context):
 
 def evaluate(obj, context=None):
 	return evaluator.evaluate(obj, context)
-
-
-#class ContextChain(evaluator.DeepCopyChainMap):
-#	# The point is to manage Context objects
-#	# such that new_child always gets a new Context with updated vmap.
-#
-#	@property
-#	def vmap(self):
-#		"""
-#		The v-map is a mapping between previously evaluated forms and their values.
-#		This is not a cache: its purpose is to track evaluations
-#		involving placeholders and to detect contradictions.
-#		Since the keys in a v-map are forms with symbols unresolved,
-#		there must be a family of v-maps with one for each context.
-#		"""
-#		return self.maps[0].vmap
-#
-#	def update_vmap(self, form, value):
-#		self.maps[0].update_vmap(form, value)
-#		# TODO When we find a new value for the form (and wasn't a contradiction),
-#		# we should update that old value present in the context to the new value.
-#
-#	def new_child(self, m=None, **kwargs):
-#		if m is None:
-#			m = kwargs
-#		elif kwargs:
-#			m.update(kwargs)
-#		return self.__class__(Context(m, self.vmap), *self.maps)
-
-
-#class Context(UserDict):
-#	def __init__(self, data=None, vmap=None):
-#		if data is None:
-#			data = {}
-#		if vmap is None:
-#			vmap = {}
-#		super().__init__()
-#		self.vmap = vmap
-#		# This updates vmap by calling __setitem__.
-#		for k in data:
-#			self[k] = data[k]
-#
-#	def __getitem__(self, name):
-#		return self.data[name]
-#
-#	def __setitem__(self, name, value):
-#		self.data[name] = value
-#		# Remove every mapping of vmap with name in key.
-#		# fn forms, i.e., function definition forms are technically pure forms,
-#		# but are difficult to handle here as it is difficult to distinguish
-#		# a symbol captured by the closure and a local one
-#		# without evaluting the body.
-#		for invalided_form in filter(lambda form: name in form, self.vmap):
-#			del self.vmap[invalided_form]

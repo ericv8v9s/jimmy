@@ -403,6 +403,9 @@ class ExploreIfBranches(Execution):
 
 		def explore_branch(self, context, condition, branch, assumption):
 			# Prepares temporary context and vmap.
+			# TODO New bindings in this context indicates def in the branch,
+			# which means we cannot guarantee the bindings to remain unchanged
+			# after the if form. Instead, such value should now be unknowns.
 			context = context.new_child()
 			old_knowns = checker.vmap
 			checker.vmap = checker.vmap.new_child()
@@ -503,3 +506,24 @@ class ExploreIfBranches(Execution):
 	def evaluate(self, context, conclusion):
 		return self.Instance(conclusion)
 		yield
+
+
+#@builtin_symbol("merge")
+class MergeValues(Execution):
+	def __init__(self):
+		super().__init__(["a", "b"])
+	def evaluate(self, context, a, b):
+		f = checker.push(List([builtin_symbols["="], a, b]), context)
+		yield
+		equal_forward = objects.known_and_true(f.result)
+
+		f = checker.push(List([builtin_symbols["="], b, a]), context)
+		yield
+		equal_backward = objects.known_and_true(f.result)
+
+		if not (equal_forward or equal_backward):
+			raise errors.AssertionError(f"{a} and {b} are not known equal.")
+
+		# TODO a and b known equal; merge vmap entries.
+
+		return a
