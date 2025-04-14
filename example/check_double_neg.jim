@@ -1,10 +1,10 @@
-(def notnot-elim (fn (P)
-	(precond (not (not P))
-	(postcond P
-		((by-cases P)
-			(if P
-				P
-				(and (not P) (not (not P)))))))))
+(def notnot-elim (fn (p)
+	(precond (not (not p))
+	(postcond p
+		((by-cases p)
+			(if p
+				(obtain p)
+				(obtain (and (not p) (not (not p))))))))))
 
 (def q)
 (assert (not (not q)))

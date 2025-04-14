@@ -1,0 +1,7 @@
+(def infix (macro (expr)
+	(if (list? expr)
+		(list
+			(list recur (get expr 1))
+			(list recur (get expr 0))
+			(list recur (get expr 2)))
+		expr)))

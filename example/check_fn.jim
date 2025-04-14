@@ -1,0 +1,12 @@
+(def f (fn (x)
+	(postcond (= *result* (* 2 x))
+		(* 2 x))))
+
+(def u)
+(obtain (= (f u) (* 2 u)))
+
+;(assert (= 3 u))
+(assert u 3)
+(obtain (= (f u) (* 2 u)))
+(obtain (= (* 2 u) 6))
+;(obtain (= (f u) 6))
